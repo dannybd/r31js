@@ -28,11 +28,14 @@ $nocache = "";
 	</script>
 </head>
 <body>
-<textarea id="hexfile" rows="20" cols="80"></textarea><br>
-<input type="button" id="runcode" value="Run Hex File" />
+<textarea id="hexfile" rows="20" cols="80">:10000000740085E090D29280F7362E31313520523F
+:050010006F636B73211A
+:00000001FF</textarea><br>
+<input type="button" id="addhex" value="Add Hex File to Memory" />
+<input type="button" id="runstop" value="Run from Memory" />
 <script>
   var hexfile = document.getElementById('hexfile');
-  var runcode = document.getElementById('runcode');
+  var addhex = document.getElementById('addhex');
   
   var memory = new Uint8Array(8000);
   memory.clear = function () {
@@ -41,12 +44,13 @@ $nocache = "";
       memory[i] = 0;
     }
   };
+  var stack = new Uint8Array(256);
   
-  function Byte(initialValue) {
+  var Byte = function (initialValue) {
     var newByte = new Uint8Array(1);
     newByte[0] = initialValue || 0;
     return newByte;
-  }
+  };
   // Define the registers. All of them. (Call a register by writing A[0].
   // It's clunky but necessary.
   var A  = Byte();
@@ -65,8 +69,11 @@ $nocache = "";
   // dptr?
   var PC = Byte();
   var SP = Byte();
+  var Carry = false;
+  var Overflow = false;
   
-  var Stack = new Uint8Array(256);
+  var P1 = Byte();
+  
   
   var opcodeByteCounts = [
   //  0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
@@ -88,25 +95,23 @@ $nocache = "";
       1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0xF_
   ];
   
-  var readNextOpcodeAndArgs = function () {
+  var readOpcodeAndArgs = function () {
     var op = memory[PC[0]];
     var args = [];
     var i;
     for (i = 1; i < opcodeByteCounts[op]; i++) {
-      PC[0] = PC[0] + 1;
-      args.push(memory[PC[0]]);
+      args.push(memory[PC[0] + i]);
     }
-    PC[0] = PC[0] + 1;
     return [op, args];
   };
   
   var strToHex = function(n) {
     return parseInt(n, 16);
-  }
+  };
   
   var intToHexStr = function(n) {
     return n.toString(16).toUpperCase();
-  }
+  };
   
   var printMemoryHead = function () {
     var str = '';
@@ -120,6 +125,7 @@ $nocache = "";
               .map(function (x, i) { 
                 return '0x' + intToHexStr(i) + '_ |\t' + x; 
               }).join('\n');
+    str += '\n';
     console.log(str);
   };
   
@@ -154,8 +160,55 @@ $nocache = "";
     printMemoryHead();
     PC[0] = 0;
   };
+  addhex.onclick = fillMemoryFromHex;
   
-  runcode.onclick = fillMemoryFromHex;
+  
+  var RUN_SPEED = 25; // in ms
+  var runState = false;
+  
+  var runFromMemory = function () {
+    runState = true;
+    runstop.value = 'Stop from Memory';
+    stepInstruction();
+  };
+  
+  var stopFromMemory = function () {
+    runState = false;
+    runstop.value = 'Run from Memory';
+  };
+  
+  var PCToNextOpcode = function (opcode) {
+    PC[0] = PC[0] + opcodeByteCounts[opcode];
+  };
+  
+  var stepInstruction = function () {
+    var nextOpAndArgs = readOpcodeAndArgs();
+    var opcode = nextOpAndArgs[0];
+    var opcodeArgs = nextOpAndArgs[1];
+    console.log(
+      'PC is at byte 0x' + intToHexStr(PC[0]) + ': opcode ' + opcode + 
+      ' [' + opcodeArgs.join(', ') + ']'
+    );
+    switch (opcode) {
+      case 0x00: // NOP
+      default:
+        PCToNextOpcode(opcode);
+        break;
+      case 0x74: // MOV A, #data
+        A[0] = opcodeArgs[0];
+        PCToNextOpcode(opcode);
+        break;
+      case 0x85:
+        break;
+    }
+    if (runState) {
+      setTimeout(stepInstruction, RUN_SPEED);
+    }
+  };
+  
+  runstop.onclick = function () {
+    runState ? stopFromMemory() : runFromMemory();
+  }
 </script>
 </body>
 </html>
