@@ -16,7 +16,7 @@ $nocache = "";
 <!--[if (gt IE 9)|!(IE)]><!--><html lang="en-us"><!--<![endif]-->
 <head>
 	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-	<title>Compile to machine code</title>
+	<title>8051JS: An emulator</title>
 	<!-- link rel="stylesheet" type="text/css" href="style.css<?= $nocache ?>" -->
 	<!-- script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
 	<script src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/jquery-ui.min.js"></script -->
