@@ -5,10 +5,11 @@ var addhex  = document.getElementById('addhex');
 
 Uint8Array.prototype.clear = function() { this.set(Array(this.length)); }
 
-var ProgramMemory = new Uint8Array(64000); // EPROM. 64K bytes
-var DataMemory    = new Uint8Array(64000); // RAM, 64K bytes
-var IntMemory = new Uint8Array(0x100);
-var Stack = new Uint8Array(0x1000);
+var ProgramMemory = new Uint8Array(0x10000); // EPROM  64K bytes
+var DataMemory    = new Uint8Array(0x10000); // RAM    64K bytes
+var InternalRAM   = new Uint8Array(0x100);
+
+// See http://www.edsim51.com/8051Notes/8051/memory.html
 
 var runState = false;
 var runSpeed = 8; // in steps per second
@@ -20,8 +21,11 @@ var log = function() {
   }
 };
 
-var strToHex = function(n) { return parseInt(n, 16); };
-var intToHexStr = function(n) { return n.toString(16).toUpperCase(); };
+var strToHex = function (n) { return parseInt(n, 16); };
+var intToHexStr = function (n) { return n.toString(16).toUpperCase(); };
+var byteToBits = function (n) { 
+  return [7, 6, 5, 4, 3, 2, 1, 0].map(function (i) { return (n >> i) & 1; });
+};
 
 var defineByte = function (varName, memorySpace, addr) {
   Object.defineProperty(window, varName, {
@@ -49,37 +53,53 @@ var defineBit = function (varName, byteName, bit) {
   Object.defineProperty(window, varName, bitProps(byteName, bit));
 };
 
-var bitAddressable = function (varName) {
-  var varName_ = varName + '_';
-  window[varName_] = {};
-  var i;
-  for (i = 0; i < 8; i++) {
-    Object.defineProperty(window[varName_], i, bitProps(varName, i));
+// And now, we begin to define the internal memory structure.
+
+// Define the registers, R0 through R7. Their locations depend on
+// RS1 and RS0, but register banks 0-3 take up 0x00 - 0x1F.
+// Without modification, the Stack Pointer begins at 0x07, so as to
+// overwrite the higher register banks as necessary.
+[0,1,2,3,4,5,6,7].forEach(function (i) {
+  Object.defineProperty(window, 'R' + i, {
+    get: function () { return InternalRAM[RS1 * 16 + RS0 * 8 + i]; },
+    set: function (val) { InternalRAM[RS1 * 16 + RS0 * 8 + i] = val; }
+  });
+});
+
+// Bytes 0x20-0x2F are bit addressable for general bit variables,
+// while many variables above 0x80 are also bit addressable.
+// Here are some helpful methods for finding and setting bits.
+var getBitAddr = function (bitAddr) {
+  if (bitAddr < 0x80) {
+    return [0x20 + (bitAddr >> 3), bitAddr % 8];
+  } else {
+    return [(bitAddr >> 3) << 3, bitAddr % 8];
   }
 };
 
-var defineAddressableByte = function (varName, memorySpace, addr) {
-  defineByte(varName, memorySpace, addr);
-  bitAddressable(varName);
+var getBit = function (bitAddr) {
+  var addr = getBitAddr(bitAddr); // [byteAddr, bitNum]
+  var byteVal = InternalRAM[addr[0]];
+  return (byteVal >> addr[1]) & 1;
 };
 
-var defineRegister = function (i) {
-  Object.defineProperty(window, 'R' + i, {
-    get: function () { return IntMemory[RS1 * 16 + RS0 * 8 + i]; },
-    set: function (val) { IntMemory[RS1 * 16 + RS0 * 8 + i] = val; }
-  });
+var setBit = function (bitAddr) {
+  var addr = getBitAddr(bitAddr); // [byteAddr, bitNum]
+  InternalRAM[addr[0]] |= (1 << addr[1]);
 };
 
-[0,1,2,3,4,5,6,7].forEach(defineRegister);
+var clearBit = function (bitAddr) {
+  var addr = getBitAddr(bitAddr); // [byteAddr, bitNum]
+  InternalRAM[addr[0]] &= 0xFF - (1 << addr[1]);
+};
 
-// Ordered by page 2-8 of the 8051 PDF
-defineAddressableByte('ACC', IntMemory, 0xE0);
-defineAddressableByte('A', IntMemory, 0xE0);
-defineAddressableByte('B', IntMemory, 0xF0);
-defineAddressableByte('PSW', IntMemory, 0xD0);
-defineByte('SP', IntMemory, 0x81);
-defineByte('DPL', IntMemory, 0x82);
-defineByte('DPH', IntMemory, 0x83);
+// Bytes 0x30 - 0x7F are left as General Purpose RAM
+
+defineByte('P0', InternalRAM, 0x80);
+defineByte('SP', InternalRAM, 0x81);
+defineByte('DPL', InternalRAM, 0x82);
+defineByte('DPH', InternalRAM, 0x83);
+// DPTR is just 0x[DPH][DPL].
 Object.defineProperty(window, 'DPTR', {
   get: function () { return (DPH << 8) + DPL; },
   set: function (val) { 
@@ -87,25 +107,38 @@ Object.defineProperty(window, 'DPTR', {
     DPL = val % 0x100;
   }
 });
-defineAddressableByte('P0', IntMemory, 0x80);
-defineAddressableByte('P1', IntMemory, 0x90);
-defineAddressableByte('P2', IntMemory, 0xA0);
-defineAddressableByte('P3', IntMemory, 0xB0);
-defineAddressableByte('IP', IntMemory, 0xB8);
-defineAddressableByte('IE', IntMemory, 0xA8);
-defineByte('TMOD', IntMemory, 0x89);
-defineAddressableByte('TCON', IntMemory, 0x88);
-defineByte('TH0', IntMemory, 0x8C);
-defineByte('TL0', IntMemory, 0x8A);
-defineByte('TH1', IntMemory, 0x8D);
-defineByte('TL1', IntMemory, 0x8B);
-defineAddressableByte('SCON', IntMemory, 0x98);
-defineByte('SBUF', IntMemory, 0x99);
-defineAddressableByte('PCON', IntMemory, 0x87);
 
-// Where do I actually put these?
-defineByte('PCL', IntMemory, 0xFE);
-defineByte('PCH', IntMemory, 0xFF);
+defineByte('PCON', InternalRAM, 0x87);
+defineByte('TCON', InternalRAM, 0x88);
+defineByte('TMOD', InternalRAM, 0x89);
+defineByte('TL0', InternalRAM, 0x8A);
+defineByte('TL1', InternalRAM, 0x8B);
+defineByte('TH0', InternalRAM, 0x8C);
+defineByte('TH1', InternalRAM, 0x8D);
+
+defineByte('P1', InternalRAM, 0x90);
+
+defineByte('SCON', InternalRAM, 0x98);
+defineByte('SBUF', InternalRAM, 0x99);
+
+defineByte('P2', InternalRAM, 0xA0);
+
+defineByte('IE', InternalRAM, 0xA8);
+
+defineByte('P3', InternalRAM, 0xB0);
+
+defineByte('IP', InternalRAM, 0xB8);
+
+defineByte('PSW', InternalRAM, 0xD0);
+
+defineByte('ACC', InternalRAM, 0xE0);
+defineByte('A', InternalRAM, 0xE0);
+
+defineByte('B', InternalRAM, 0xF0);
+
+// These aren't technically defined within the 
+defineByte('PCL', InternalRAM, 0xFE);
+defineByte('PCH', InternalRAM, 0xFF);
 Object.defineProperty(window, 'PC', {
   get: function () { return (PCH << 8) + PCL; },
   set: function (val) { 
@@ -121,6 +154,7 @@ P1 = 0xFF;
 P2 = 0xFF;
 P3 = 0xFF;
 
+// The bits in the SFR usually have names, so we assign those.
 defineBit('C',    'PSW',  7);
 defineBit('CY',   'PSW',  7);
 defineBit('AC',   'PSW',  6);
@@ -169,26 +203,10 @@ defineBit('RB8',  'SCON', 2);
 defineBit('TI',   'SCON', 1);
 defineBit('RI',   'SCON', 0);
 
-Object.defineProperty(window, 'AtR0', {
-  get: function () { return IntMemory[R0]; },
-  set: function (val) { IntMemory[R0] = val; }
-});
-
-Object.defineProperty(window, 'AtR1', {
-  get: function () { return IntMemory[R1]; },
-  set: function (val) { IntMemory[R1] = val; }
-});
-
 var opcodeArgTypes = {
-  'Rn': function (arg) { // R7 - R0 [I don't think this is a legit argument]
-    return arg;
-  },
-  'direct': function(arg) {    // 8-bit internal data location's address. This could be Internal Data RAM [0-127] or a SFR [128-255].
-    return IntMemory[arg];
-  },
-  '@Ri': function (arg) {
-    
-  },       // 8-bit internal data RAM location (0-255) addressed indirectly through register R1 or R0.
+  'Rn': 0, // R7 - R0 [I don't think this is a legit argument]
+  'direct': 0,  // 8-bit internal data location's address. This could be Internal Data RAM [0-127] or a SFR [128-255].
+  '@Ri': 0, // 8-bit internal data RAM location (0-255) addressed indirectly through register R1 or R0.
   '#data': 0,     // 8-bit constant included in instruction
   '#data 16': 0,  // 16-bit constant included in instruction
   'addr 16': 0,   // 16-bit destination address. Used by LCALL & LJMP. A branch can be anywhere within the 64K-byte Program Memory Address Space.
@@ -197,6 +215,26 @@ var opcodeArgTypes = {
   'bit': 0,       // Direct Addressed bit in Internal Data RAM or SFR.
 };
 
+var argsToDirect = function (arg) { return InternalRAM[arg]; };
+
+Object.defineProperty(window, 'AtR0', {
+  get: function () { return InternalRAM[R0]; },
+  set: function (val) { InternalRAM[R0] = val; }
+});
+
+Object.defineProperty(window, 'AtR1', {
+  get: function () { return InternalRAM[R1]; },
+  set: function (val) { InternalRAM[R1] = val; }
+});
+
+var argsToData = function (arg) { return arg; };
+var argsToData16 = function (arg, arg2) { return (arg << 8) + arg2; };
+var argsToAddr16 = function (arg, arg2) { return (arg << 8) + arg2; };
+var argsToAddr11 = function (arg) { return (arg << 8) + arg2; };
+var argsToRel = function (arg) { return ((arg + 128) % 256) - 128; };
+// var argsToBit = function (arg) { return arg; } // TODO
+
+
 /*****
  * TODO:
  * - Understand memory layout.
@@ -204,6 +242,9 @@ var opcodeArgTypes = {
  * - Have parity bit perform automatically
  * - Write interpretation methods
  * - Figure out @ Ri.
+ *
+ * Also, this is helpful:
+ * http://www.edsim51.com/8051Notes/8051/memory.html
  */
 
 var LightBank = React.createClass({
@@ -303,8 +344,8 @@ var fillMemoryFromHex = function () {
   printMemoryHead();
   PC = 0;
 };
-addhex.onclick = fillMemoryFromHex;
 
+addhex.onclick = fillMemoryFromHex;
 
 
 var runFromMemory = function () {
@@ -341,11 +382,11 @@ var stepInstruction = function () {
       PCToNextOpcode(opcode);
       break;
     case 0x85: // MOV iram, iram
-      IntMemory[args[1]] = IntMemory[args[0]];
+      InternalRAM[args[1]] = InternalRAM[args[0]];
       PCToNextOpcode(opcode);
       break;
     case 0xD2: // SETB bit addr
-      P1_[2] = 1;
+      setBit(args[0]);
       PCToNextOpcode(opcode);
       break;
     case 0x80: // SJMP reladdr
@@ -365,8 +406,9 @@ var updateState = function () {
   var P1Bulbs = [].slice.apply(
     document.querySelectorAll('.lightBank.P1 .lightBulb')
   ).reverse();
+  var bits = byteToBits(P1);
   P1Bulbs.forEach(function (bulb, i) {
-    var val = P1_[i];
+    var val = bits[i];
     if (bulb.innerText !== val.toString()) {
       bulb.classList.remove(val ? 'off' : 'on');
       bulb.innerText = val;

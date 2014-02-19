@@ -1,0 +1,9 @@
+.lightBank {
+  font-family: 'Courier New', sans-serif;
+}
+.lightBulb.on {
+  background-color: #44ff44;
+}
+.lightBulb.off {
+  background-color: #444444;
+}
