@@ -215,26 +215,6 @@ var opcodeArgTypes = {
   'bit': 0,       // Direct Addressed bit in Internal Data RAM or SFR.
 };
 
-var argsToDirect = function (arg) { return InternalRAM[arg]; };
-
-Object.defineProperty(window, 'AtR0', {
-  get: function () { return InternalRAM[R0]; },
-  set: function (val) { InternalRAM[R0] = val; }
-});
-
-Object.defineProperty(window, 'AtR1', {
-  get: function () { return InternalRAM[R1]; },
-  set: function (val) { InternalRAM[R1] = val; }
-});
-
-var argsToData = function (arg) { return arg; };
-var argsToData16 = function (arg, arg2) { return (arg << 8) + arg2; };
-var argsToAddr16 = function (arg, arg2) { return (arg << 8) + arg2; };
-var argsToAddr11 = function (arg) { return (arg << 8) + arg2; };
-var argsToRel = function (arg) { return ((arg + 128) % 256) - 128; };
-// var argsToBit = function (arg) { return arg; } // TODO
-
-
 /*****
  * TODO:
  * - Understand memory layout.
@@ -360,8 +340,37 @@ var stopFromMemory = function () {
   runstop.value = 'Run from Memory';
 };
 
-var PCToNextOpcode = function (opcode) {
+var nextPC = function (opcode) {
   PC = PC + opcodeByteCounts[opcode];
+};
+
+
+Object.defineProperty(window, 'AtR0', {
+  get: function () { return InternalRAM[R0]; },
+  set: function (val) { InternalRAM[R0] = val; }
+});
+
+Object.defineProperty(window, 'AtR1', {
+  get: function () { return InternalRAM[R1]; },
+  set: function (val) { InternalRAM[R1] = val; }
+});
+
+var argsToDirect = function (arg) { return InternalRAM[arg]; };
+var argsToData = function (arg) { return arg; };
+var argsToData16 = function (arg, arg2) { return (arg << 8) + arg2; };
+var argsToAddr16 = function (arg, arg2) { return (arg << 8) + arg2; };
+var argsToAddr11 = function (arg) { return (arg << 8) + arg2; };
+var argsToRel = function (arg) { return ((arg + 128) % 256) - 128; };
+var argsToBit = function (arg) { return getBit(arg); };
+var opcodeToReg = function (opcode) { return window['R' + (opcode % 8)]; };
+var getCarryBits = function () {
+  var args = [].slice.apply(arguments);
+  return [0, 1, 2, 3, 4, 5, 6, 7].map(function(i) {
+    return args.map(function(a) { return a & ((1 << i) - 1); })
+      .reduce(function (a, b) {
+      return a + b;
+    }) > ((1 << i) - 1);
+  });
 };
 
 var stepInstruction = function () {
@@ -372,29 +381,155 @@ var stepInstruction = function () {
     'PC is at byte 0x' + intToHexStr(PC) + ': opcode ' + intToHexStr(opcode) + 
     ' [' + args.map(intToHexStr).join(', ') + ']'
   );
+  var carryBits, AtRn;
+  var loadNextPC = true;
   switch (opcode) {
     case 0x00: // NOP
     default:
-      PCToNextOpcode(opcode);
       break;
+    case 0x11: // ACALL page0
+    case 0x31: // ACALL page1
+    case 0x51: // ACALL page2
+    case 0x71: // ACALL page3
+    case 0x91: // ACALL page4
+    case 0xB1: // ACALL page5
+    case 0xD1: // ACALL page6
+    case 0xF1: // ACALL page7
+      // TODO: ACALL
+      break;
+    case 0x24: // ADD A, #data
+      carryBits = getCarryBits(A, argsToData(args[0]));
+      C = carryBits[7];
+      AC = carryBits[3];
+      OV = carryBits[6] ^ carryBits[7];
+      A = A + argsToData(args[0]);
+      break;
+    case 0x25: // ADD A, iram
+      carryBits = getCarryBits(A, argsToDirect(args[0]));
+      C = carryBits[7];
+      AC = carryBits[3];
+      OV = carryBits[6] ^ carryBits[7];
+      A = A + argsToDirect(args[0]);
+      break;
+    case 0x26: // ADD A, @Rn
+    case 0x27:
+      AtRn = (opcode & 1) ? AtR1 : AtR0;
+      carryBits = getCarryBits(A, AtRn);
+      C = carryBits[7];
+      AC = carryBits[3];
+      OV = carryBits[6] ^ carryBits[7];
+      A = A + AtRn;
+      break;
+    case 0x28: // ADD A, R0
+    case 0x29: // ADD A, R1
+    case 0x2A: // ADD A, R2
+    case 0x2B: // ADD A, R3
+    case 0x2C: // ADD A, R4
+    case 0x2D: // ADD A, R5
+    case 0x2E: // ADD A, R6
+    case 0x2F: // ADD A, R7
+      carryBits = getCarryBits(A, opcodeToReg(opcode));
+      C = carryBits[7];
+      AC = carryBits[3];
+      OV = carryBits[6] ^ carryBits[7];
+      A = A + opcodeToReg(opcode);
+      break;
+    case 0x34: // ADDC A, #data
+      carryBits = getCarryBits(A, C, argsToData(args[0]));
+      C = carryBits[7];
+      AC = carryBits[3];
+      OV = carryBits[6] ^ carryBits[7];
+      A = A + C + argsToData(args[0]);
+      break;
+    case 0x35: // ADDC A, iram
+      carryBits = getCarryBits(A, C, argsToDirect(args[0]));
+      C = carryBits[7];
+      AC = carryBits[3];
+      OV = carryBits[6] ^ carryBits[7];
+      A = A + C + argsToDirect(args[0]);
+      break;
+    case 0x36: // ADDC A, @R0
+    case 0x37: // ADDC A, @R1
+      AtRn = (opcode & 1) ? AtR1 : AtR0;
+      carryBits = getCarryBits(A, C, AtRn);
+      C = carryBits[7];
+      AC = carryBits[3];
+      OV = carryBits[6] ^ carryBits[7];
+      A = A + C + AtRn;
+      break;
+    case 0x38: // ADDC A, Rn
+    case 0x39: // ADDC A, R1
+    case 0x3A: // ADDC A, R2
+    case 0x3B: // ADDC A, R3
+    case 0x3C: // ADDC A, R4
+    case 0x3D: // ADDC A, R5
+    case 0x3E: // ADDC A, R6
+    case 0x3F: // ADDC A, R7
+      carryBits = getCarryBits(A, C, opcodeToReg(opcode));
+      C = carryBits[7];
+      AC = carryBits[3];
+      OV = carryBits[6] ^ carryBits[7];
+      A = A + C + opcodeToReg(opcode);
+      break;
+    case 0x01: // AJMP page0
+    case 0x21: // AJMP page1
+    case 0x41: // AJMP page2
+    case 0x61: // AJMP page3
+    case 0x81: // AJMP page4
+    case 0xA1: // AJMP page5
+    case 0xC1: // AJMP page6
+    case 0xE1: // AJMP page7
+      // TODO: AJMP
+      break;
+    case 0x52: // ANL iram, A
+      InternalRAM[args[0]] = argsToDirect(args[0]) & A;
+      break;
+    case 0x53: // ANL iram, #data
+      InternalRAM[args[0]] = argsToDirect(args[0]) & argsToData(args[1]);
+      break;
+    case 0x54: // ANL A, #data
+      A = A & argsToData(args[0]);
+      break;
+    case 0x55: // ANL A, iram
+      A = A & argsToDirect(args[0]);
+      break;
+    case 0x56: // ANL A, @R0
+    case 0x57: // ANL A, @R1
+      A = A & (opcode & 1) ? AtR1 : AtR0;
+      break;
+    case 0x58: // ANL A, R0
+    case 0x59: // ANL A, R1
+    case 0x5A: // ANL A, R2
+    case 0x5B: // ANL A, R3
+    case 0x5C: // ANL A, R4
+    case 0x5D: // ANL A, R5
+    case 0x5E: // ANL A, R6
+    case 0x5F: // ANL A, R7
+      A = A & opcodeToReg(opcode);
+      break;
+    case 0x82: // ANL C, bit
+    case 0xB0: // ANL C, bit
+      C = C & argsToBit(args[0]);
+      break;
+      
+    /****original below****/
     case 0x74: // MOV A, #data
       A = args[0];
-      PCToNextOpcode(opcode);
       break;
     case 0x85: // MOV iram, iram
       InternalRAM[args[1]] = InternalRAM[args[0]];
-      PCToNextOpcode(opcode);
       break;
     case 0xD2: // SETB bit addr
       setBit(args[0]);
-      PCToNextOpcode(opcode);
       break;
     case 0x80: // SJMP reladdr
-      PCToNextOpcode(opcode);
       var tmp = new Int8Array(1);
       tmp[0] += args[0];
       PC = PC + tmp[0];
       break;
+  }
+  if (loadNextPC) {
+    nextPC(opcode);
   }
   updateState();
   if (runState) {
