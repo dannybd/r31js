@@ -1,21 +1,14 @@
 /** @jsx React.DOM */
 
 var hexfile = document.getElementById('hexfile');
-var addhex = document.getElementById('addhex');
+var addhex  = document.getElementById('addhex');
 
-var Memory = new Uint8Array(0x8000);
-Memory.clear = function () {
-  var i;
-  for (i = 0; i < Memory.length; i++) {
-    Memory[i] = 0;
-  }
-};
-var Stack = Memory.subarray(0x7F00, 0x8000); // new Uint8Array(256);
+Uint8Array.prototype.clear = function() { this.set(Array(this.length)); }
 
-var Carry = false;
-var Overflow = false;
-
-var InternalDataMemory = Memory.subarray(0x7E00, 0x7F00); // new Uint8Array(256);
+var ProgramMemory = new Uint8Array(64000); // EPROM. 64K bytes
+var DataMemory    = new Uint8Array(64000); // RAM, 64K bytes
+var IntMemory = new Uint8Array(0x100);
+var Stack = new Uint8Array(0x1000);
 
 var defineByte = function (varName, memorySpace, addr) {
   Object.defineProperty(window, varName, {
@@ -39,6 +32,10 @@ var bitProps = function (varName, n) {
   }
 };
 
+var defineBit = function (varName, byteName, bit) {
+  Object.defineProperty(window, varName, bitProps(byteName, bit));
+};
+
 var bitAddressable = function (varName) {
   var varName_ = varName + '_';
   window[varName_] = {};
@@ -48,33 +45,28 @@ var bitAddressable = function (varName) {
   }
 };
 
-var defineBit = function (varName, byteName, bit) {
-  Object.defineProperty(window, varName, bitProps(byteName, bit));
-};
-
 var defineAddressableByte = function (varName, memorySpace, addr) {
   defineByte(varName, memorySpace, addr);
   bitAddressable(varName);
 };
 
+var defineRegister = function (i) {
+  Object.defineProperty(window, 'R' + i, {
+    get: function () { return IntMemory[RS1 * 16 + RS0 * 8 + i]; },
+    set: function (val) { IntMemory[RS1 * 16 + RS0 * 8 + i] = val; }
+  });
+};
 
-defineByte('R0', InternalDataMemory, 0x00);
-defineByte('R1', InternalDataMemory, 0x01);
-defineByte('R2', InternalDataMemory, 0x02);
-defineByte('R3', InternalDataMemory, 0x03);
-defineByte('R4', InternalDataMemory, 0x04);
-defineByte('R5', InternalDataMemory, 0x05);
-defineByte('R6', InternalDataMemory, 0x06);
-defineByte('R7', InternalDataMemory, 0x07);
+[0,1,2,3,4,5,6,7].forEach(defineRegister);
 
 // Ordered by page 2-8 of the 8051 PDF
-defineAddressableByte('ACC',  InternalDataMemory, 0xE0);
-defineAddressableByte('A',  InternalDataMemory, 0xE0);
-defineAddressableByte('B',  InternalDataMemory, 0xF0);
-defineAddressableByte('PSW', InternalDataMemory, 0xD0);
-defineByte('SP', InternalDataMemory, 0x81);
-defineByte('DPL', InternalDataMemory, 0x82);
-defineByte('DPH', InternalDataMemory, 0x83);
+defineAddressableByte('ACC', IntMemory, 0xE0);
+defineAddressableByte('A', IntMemory, 0xE0);
+defineAddressableByte('B', IntMemory, 0xF0);
+defineAddressableByte('PSW', IntMemory, 0xD0);
+defineByte('SP', IntMemory, 0x81);
+defineByte('DPL', IntMemory, 0x82);
+defineByte('DPH', IntMemory, 0x83);
 Object.defineProperty(window, 'DPTR', {
   get: function () { return (DPH << 8) + DPL; },
   set: function (val) { 
@@ -82,25 +74,25 @@ Object.defineProperty(window, 'DPTR', {
     DPL = val % 0x100;
   }
 });
-defineAddressableByte('P0', InternalDataMemory, 0x80);
-defineAddressableByte('P1', InternalDataMemory, 0x90);
-defineAddressableByte('P2', InternalDataMemory, 0xA0);
-defineAddressableByte('P3', InternalDataMemory, 0xB0);
-defineAddressableByte('IP', InternalDataMemory, 0xB8);
-defineAddressableByte('IE', InternalDataMemory, 0xA8);
-defineByte('TMOD', InternalDataMemory, 0x89);
-defineAddressableByte('TCON', InternalDataMemory, 0x88);
-defineByte('TH0', InternalDataMemory, 0x8C);
-defineByte('TL0', InternalDataMemory, 0x8A);
-defineByte('TH1', InternalDataMemory, 0x8D);
-defineByte('TL1', InternalDataMemory, 0x8B);
-defineAddressableByte('SCON', InternalDataMemory, 0x98);
-defineByte('SBUF', InternalDataMemory, 0x99);
-defineAddressableByte('PCON', InternalDataMemory, 0x87);
+defineAddressableByte('P0', IntMemory, 0x80);
+defineAddressableByte('P1', IntMemory, 0x90);
+defineAddressableByte('P2', IntMemory, 0xA0);
+defineAddressableByte('P3', IntMemory, 0xB0);
+defineAddressableByte('IP', IntMemory, 0xB8);
+defineAddressableByte('IE', IntMemory, 0xA8);
+defineByte('TMOD', IntMemory, 0x89);
+defineAddressableByte('TCON', IntMemory, 0x88);
+defineByte('TH0', IntMemory, 0x8C);
+defineByte('TL0', IntMemory, 0x8A);
+defineByte('TH1', IntMemory, 0x8D);
+defineByte('TL1', IntMemory, 0x8B);
+defineAddressableByte('SCON', IntMemory, 0x98);
+defineByte('SBUF', IntMemory, 0x99);
+defineAddressableByte('PCON', IntMemory, 0x87);
 
 // Where do I actually put these?
-defineByte('PCL',  InternalDataMemory, 0xFE);
-defineByte('PCH',  InternalDataMemory, 0xFF);
+defineByte('PCL', IntMemory, 0xFE);
+defineByte('PCH', IntMemory, 0xFF);
 Object.defineProperty(window, 'PC', {
   get: function () { return (PCH << 8) + PCL; },
   set: function (val) { 
@@ -116,60 +108,74 @@ P1 = 0xFF;
 P2 = 0xFF;
 P3 = 0xFF;
 
-defineBit('C', 'PSW', 7);
-defineBit('CY', 'PSW', 7);
-defineBit('AC', 'PSW', 6);
-defineBit('F0', 'PSW', 5);
-defineBit('RS1', 'PSW', 4);
-defineBit('RS0', 'PSW', 3);
-defineBit('OV', 'PSW', 2); // TODO
-defineBit('P', 'PSW', 0); // TODO
+defineBit('C',    'PSW',  7);
+defineBit('CY',   'PSW',  7);
+defineBit('AC',   'PSW',  6);
+defineBit('F0',   'PSW',  5);
+defineBit('RS1',  'PSW',  4);
+defineBit('RS0',  'PSW',  3);
+defineBit('OV',   'PSW',  2); // TODO
+defineBit('P',    'PSW',  0); // TODO
 
 defineBit('SMOD', 'PCON', 7);
-defineBit('GF1', 'PCON', 3);
-defineBit('GF0', 'PCON', 2);
-defineBit('PD', 'PCON', 1);
-defineBit('IDL', 'PCON', 0);
+defineBit('GF1',  'PCON', 3);
+defineBit('GF0',  'PCON', 2);
+defineBit('PD',   'PCON', 1);
+defineBit('IDL',  'PCON', 0);
 
-defineBit('EA', 'IE', 7);
-defineBit('ET2', 'IE', 5);
-defineBit('ES', 'IE', 4);
-defineBit('ET1', 'IE', 3);
-defineBit('EX1', 'IE', 2);
-defineBit('ET0', 'IE', 1);
-defineBit('EX0', 'IE', 0);
+defineBit('EA',   'IE',   7);
+defineBit('ET2',  'IE',   5);
+defineBit('ES',   'IE',   4);
+defineBit('ET1',  'IE',   3);
+defineBit('EX1',  'IE',   2);
+defineBit('ET0',  'IE',   1);
+defineBit('EX0',  'IE',   0);
 
-defineBit('PT2', 'IP', 5);
-defineBit('PS', 'IP', 4);
-defineBit('PT1', 'IP', 3);
-defineBit('PX1', 'IP', 2);
-defineBit('PT0', 'IP', 1);
-defineBit('PX0', 'IP', 0);
+defineBit('PT2',  'IP',   5);
+defineBit('PS',   'IP',   4);
+defineBit('PT1',  'IP',   3);
+defineBit('PX1',  'IP',   2);
+defineBit('PT0',  'IP',   1);
+defineBit('PX0',  'IP',   0);
 
-defineBit('TF1', 'TCON', 7);
-defineBit('TR1', 'TCON', 6);
-defineBit('TF0', 'TCON', 5);
-defineBit('TR0', 'TCON', 4);
-defineBit('IE1', 'TCON', 3);
-defineBit('IT1', 'TCON', 2);
-defineBit('IE0', 'TCON', 1);
-defineBit('IT0', 'TCON', 0);
+defineBit('TF1',  'TCON', 7);
+defineBit('TR1',  'TCON', 6);
+defineBit('TF0',  'TCON', 5);
+defineBit('TR0',  'TCON', 4);
+defineBit('IE1',  'TCON', 3);
+defineBit('IT1',  'TCON', 2);
+defineBit('IE0',  'TCON', 1);
+defineBit('IT0',  'TCON', 0);
 
-defineBit('SM0', 'SCON', 7);
-defineBit('SM1', 'SCON', 6);
-defineBit('SM2', 'SCON', 5);
-defineBit('REN', 'SCON', 4);
-defineBit('TB8', 'SCON', 3);
-defineBit('RB8', 'SCON', 2);
-defineBit('TI', 'SCON', 1);
-defineBit('RI', 'SCON', 0);
+defineBit('SM0',  'SCON', 7);
+defineBit('SM1',  'SCON', 6);
+defineBit('SM2',  'SCON', 5);
+defineBit('REN',  'SCON', 4);
+defineBit('TB8',  'SCON', 3);
+defineBit('RB8',  'SCON', 2);
+defineBit('TI',   'SCON', 1);
+defineBit('RI',   'SCON', 0);
 
 var opcodeArgTypes = {
-  'code addr': 0,
-  'data addr': 0,
-  'bit addr':  0,
-  '#data':     0,
+  'Rn': 0,        // R7 - R0
+  'direct': 0,    // 8-bit internal data location's address. This could be Internal Data RAM [0-127] or a SFR [128-255].
+  '@Ri': 0,       // 8-bit internal data RAM location (0-255) addressed indirectly through register R1 or R0.
+  '#data': 0,     // 8-bit constant included in instruction
+  '#data 16': 0,  // 16-bit constant included in instruction
+  'addr 16': 0,   // 16-bit destination address. Used by LCALL & LJMP. A branch can be anywhere within the 64K-byte Program Memory Address Space.
+  'addr 11': 0,   // 11-bit destination address. Used by ACALL & AJMP. The branch will be within the same 2K-byte page of program memory as the first byte of the following instruction.
+  'rel': 0,       // Signed (two's complement) 8-bit offset byte. Used by SJMP and all conditional jumps. Range is -128 to +127 bytes relative to the first byte of the following instruction.
+  'bit': 0,       // Direct Addressed bit in Internal Data RAM or SFR.
 };
+
+/*****
+ * TODO:
+ * - Understand memory layout.
+ * - Write register bank system.
+ * - Have parity bit perform automatically
+ * - Write interpretation methods
+ * - Figure out @ Ri.
+ */
 
 var LightBank = React.createClass({
   render: function () {
@@ -316,7 +322,7 @@ var stepInstruction = function () {
       PCToNextOpcode(opcode);
       break;
     case 0x85: // MOV iram, iram
-      InternalDataMemory[args[1]] = InternalDataMemory[args[0]];
+      IntMemory[args[1]] = IntMemory[args[0]];
       PCToNextOpcode(opcode);
       break;
     case 0xD2: // SETB bit addr
