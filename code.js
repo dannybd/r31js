@@ -508,10 +508,95 @@ var stepInstruction = function () {
       A = A & opcodeToReg(opcode);
       break;
     case 0x82: // ANL C, bit
-    case 0xB0: // ANL C, bit
       C = C & argsToBit(args[0]);
       break;
-      
+    case 0xB0: // ANL C, !bit
+      C = C & !argsToBit(args[0]);
+      break;
+    case 0xB4: // CJNE A, #data, rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (A !== argsToData(args[0])) {
+        PC = PC + argsToRel(args[1]);
+      }
+      C = A < argsToData(args[0]);
+      break;
+    case 0xB5: // CJNE A, iram, rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (A !== argsToDirect(args[0])) {
+        PC = PC + argsToRel(args[1]);
+      }
+      C = A < argsToDirect(args[0]);
+      break;
+    case 0xB5: // CJNE @R0, iram, rel
+    case 0xB6: // CJNE @R1, iram, rel
+      nextPC(opcode);
+      loadNextPC = false;
+      AtRn = (opcode & 1) ? AtR1 : AtR0;
+      if (AtRn !== argsToData(args[0])) {
+        PC = PC + argsToRel(args[1]);
+      }
+      C = AtRn < argsToData(args[0]);
+      break;
+    case 0xB8: // CJNE R0, #data, rel
+    case 0xB9: // CJNE R1, #data, rel
+    case 0xBA: // CJNE R2, #data, rel
+    case 0xBB: // CJNE R3, #data, rel
+    case 0xBC: // CJNE R4, #data, rel
+    case 0xBD: // CJNE R5, #data, rel
+    case 0xBE: // CJNE R6, #data, rel
+    case 0xBF: // CJNE R7, #data, rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (opcodeToReg(opcode) !== argsToData(args[0])) {
+        PC = PC + argsToRel(args[1]);
+      }
+      C = opcodeToReg(opcode) < argsToData(args[0]);
+      break;
+    case 0xC2: // CLR bit
+      clearBit(args[0]);
+      break;
+    case 0xC3: // CLR C
+      C = 0;
+      break;
+    case 0xE4: // CLR A
+      A = 0;
+      break;
+    case 0xF4: // CPL A
+      A = ~A;
+      break;
+    case 0xB3: // CPL C
+      C = 1 - C;
+      break;
+    case 0xB2: // CPL bit
+      argsToBit(args[0]) ? clearBit(args[0]) : setBit(args[0]);
+      break;
+    case 0xD4: // DA A
+      // TODO: DA
+      break;
+    case 0x54: // DEC A
+      A = A - 1;
+      break;
+    case 0x55: // DEC iram
+      InternalRAM[args[0]] -= 1;
+      break;
+    case 0x56: // DEC @R0
+      AtR0 -= 1;
+      break;
+    case 0x57: // DEC @R1
+      AtR1 -= 1;
+      break;
+    case 0x58: // DEC R0
+    case 0x59: // DEC R1
+    case 0x5A: // DEC R2
+    case 0x5B: // DEC R3
+    case 0x5C: // DEC R4
+    case 0x5D: // DEC R5
+    case 0x5E: // DEC R6
+    case 0x5F: // DEC R7
+      opcodeToReg(opcode) -= 1;
+      break;
     /****original below****/
     case 0x74: // MOV A, #data
       A = args[0];
