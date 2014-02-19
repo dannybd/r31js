@@ -169,10 +169,26 @@ defineBit('RB8',  'SCON', 2);
 defineBit('TI',   'SCON', 1);
 defineBit('RI',   'SCON', 0);
 
+Object.defineProperty(window, 'AtR0', {
+  get: function () { return IntMemory[R0]; },
+  set: function (val) { IntMemory[R0] = val; }
+});
+
+Object.defineProperty(window, 'AtR1', {
+  get: function () { return IntMemory[R1]; },
+  set: function (val) { IntMemory[R1] = val; }
+});
+
 var opcodeArgTypes = {
-  'Rn': 0,        // R7 - R0
-  'direct': 0,    // 8-bit internal data location's address. This could be Internal Data RAM [0-127] or a SFR [128-255].
-  '@Ri': 0,       // 8-bit internal data RAM location (0-255) addressed indirectly through register R1 or R0.
+  'Rn': function (arg) { // R7 - R0 [I don't think this is a legit argument]
+    return arg;
+  },
+  'direct': function(arg) {    // 8-bit internal data location's address. This could be Internal Data RAM [0-127] or a SFR [128-255].
+    return IntMemory[arg];
+  },
+  '@Ri': function (arg) {
+    
+  },       // 8-bit internal data RAM location (0-255) addressed indirectly through register R1 or R0.
   '#data': 0,     // 8-bit constant included in instruction
   '#data 16': 0,  // 16-bit constant included in instruction
   'addr 16': 0,   // 16-bit destination address. Used by LCALL & LJMP. A branch can be anywhere within the 64K-byte Program Memory Address Space.
