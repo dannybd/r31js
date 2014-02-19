@@ -10,6 +10,19 @@ var DataMemory    = new Uint8Array(64000); // RAM, 64K bytes
 var IntMemory = new Uint8Array(0x100);
 var Stack = new Uint8Array(0x1000);
 
+var runState = false;
+var runSpeed = 8; // in steps per second
+
+var verbose = true;
+var log = function() {
+  if (verbose) {
+    console.log.apply(console, arguments);
+  }
+};
+
+var strToHex = function(n) { return parseInt(n, 16); };
+var intToHexStr = function(n) { return n.toString(16).toUpperCase(); };
+
 var defineByte = function (varName, memorySpace, addr) {
   Object.defineProperty(window, varName, {
     get: function () { return memorySpace[addr]; },
@@ -218,21 +231,13 @@ var opcodeByteCounts = [
 ];
 
 var readOpcodeAndArgs = function () {
-  var op = Memory[PC];
+  var op = DataMemory[PC];
   var args = [];
   var i;
   for (i = 1; i < opcodeByteCounts[op]; i++) {
-    args.push(Memory[PC + i]);
+    args.push(DataMemory[PC + i]);
   }
   return [op, args];
-};
-
-var strToHex = function(n) {
-  return parseInt(n, 16);
-};
-
-var intToHexStr = function(n) {
-  return n.toString(16).toUpperCase();
 };
 
 var printMemoryHead = function () {
@@ -242,40 +247,40 @@ var printMemoryHead = function () {
   str += '-----------------------------------';
   str += '-----------------------------------\n'; 
   str += [].slice
-            .apply(Memory.subarray(0,0xFF))
+            .apply(DataMemory.subarray(0,0xFF))
             .map(intToHexStr).join('\t').match(/(\w+\t){16}/g)
             .map(function (x, i) { 
               return '0x' + intToHexStr(i) + '_ |\t' + x; 
             }).join('\n');
   str += '\n';
-  console.log(str);
+  log(str);
 };
 
 var fillMemoryFromHex = function () {
-  Memory.clear();
+  DataMemory.clear();
   if (!hexfile.value) {
     return;
   }
   var hexLines = hexfile.value.substr(1).split('\n:');
   hexLines.forEach(function (line, lineNum) {
-    console.log('Running on line ' + lineNum);
+    log('Running on line ' + lineNum);
     var bytes = line.match(/../g);
     if (bytes.map(strToHex).reduce(function(a, b) { return a + b; }) % 256) {
       // Failed the checksum
-      console.log('Checksum failed on line ' + lineNum + '!');
+      log('Checksum failed on line ' + lineNum + '!');
       // return;
     }
     var recordLength = strToHex(bytes[0]);
     var loadAddress = strToHex(bytes[1] + bytes[2]);
     var recordType = strToHex(bytes[3]);
     if (recordType === 1) {
-      console.log('End record type detected!');
+      log('End record type detected!');
       return;
     }
     PC = loadAddress;
     var i;
     for (i = 4; i < 4 + recordLength; i++) {
-      Memory[PC] = strToHex(bytes[i]);
+      DataMemory[PC] = strToHex(bytes[i]);
       PC = PC + 1;
     }
   });
@@ -285,8 +290,6 @@ var fillMemoryFromHex = function () {
 addhex.onclick = fillMemoryFromHex;
 
 
-var RUN_SPEED = 250; // in ms
-var runState = false;
 
 var runFromMemory = function () {
   runState = true;
@@ -308,7 +311,7 @@ var stepInstruction = function () {
   var nextOpAndArgs = readOpcodeAndArgs();
   var opcode = nextOpAndArgs[0];
   var args   = nextOpAndArgs[1];
-  console.log(
+  log(
     'PC is at byte 0x' + intToHexStr(PC) + ': opcode ' + intToHexStr(opcode) + 
     ' [' + args.map(intToHexStr).join(', ') + ']'
   );
@@ -336,10 +339,27 @@ var stepInstruction = function () {
       PC = PC + tmp[0];
       break;
   }
+  updateState();
   if (runState) {
-    runState = setTimeout(stepInstruction, RUN_SPEED);
+    runState = setTimeout(stepInstruction, 1000 / runSpeed);
   }
 };
+
+var updateState = function () {
+  var P1Bulbs = [].slice.apply(
+    document.querySelectorAll('.lightBank.P1 .lightBulb')
+  ).reverse();
+  P1Bulbs.forEach(function (bulb, i) {
+    var val = P1_[i];
+    if (bulb.innerText !== val.toString()) {
+      bulb.classList.remove(val ? 'off' : 'on');
+      bulb.innerText = val;
+      bulb.classList.add(val ? 'on' : 'off');
+    }
+  });
+};
+
+updateState();
 
 runstop.onclick = function () {
   runState ? stopFromMemory() : runFromMemory();

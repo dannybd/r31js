@@ -17,7 +17,7 @@ $nocache = "";
 <head>
 	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
 	<title>8051JS: An emulator</title>
-	<!-- link rel="stylesheet" type="text/css" href="style.css<?= $nocache ?>" -->
+	<link rel="stylesheet" type="text/css" href="style.css<?= $nocache ?>">
 	<!-- script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
 	<script src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/jquery-ui.min.js"></script -->
 	<script>
@@ -33,7 +33,9 @@ $nocache = "";
 :00000001FF</textarea><br>
 <input type="button" id="addhex" value="Add Hex File to Memory" />
 <input type="button" id="runstop" value="Run from Memory" />
-<div id="lightBank"></div>
+<div class="lightBank P1">
+<span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span>
+</div>
 <script src="http://fb.me/react-0.8.0.min.js"></script>
 <script src="http://fb.me/JSXTransformer-0.8.0.js"></script>
 <script type="text/jsx" src="code.js"></script>
