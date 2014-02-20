@@ -5,9 +5,30 @@ var addhex  = document.getElementById('addhex');
 
 Uint8Array.prototype.clear = function() { this.set(Array(this.length)); }
 
-var ProgramMemory = new Uint8Array(0x10000); // EPROM  64K bytes
-var DataMemory    = new Uint8Array(0x10000); // RAM    64K bytes
+var ProgramMemory = new Uint8Array(0x8000); // EPROM
+var DataMemory    = new Uint8Array(0x8000); // RAM
 var InternalRAM   = new Uint8Array(0x100);
+
+var Modes = { MON: 0, RUN: 1 };
+var Mode = Modes.RUN;
+
+var getMemLoc = function (addr) {
+  var subAddr = addr & 0x7FFF;
+  if ((Mode === Modes.MON) ^ (addr > 0x7FFF)) {
+    return ProgramMemory[subAddr];
+  } else {
+    return DataMemory[subAddr];
+  }
+};
+
+var setMemLoc = function (addr, newVal) {
+  var subAddr = addr & 0x7FFF;
+  if ((Mode === Modes.MON) ^ (addr > 0x7FFF)) {
+    ProgramMemory[subAddr] = newVal;
+  } else {
+    DataMemory[subAddr] = newVal;
+  }
+}
 
 // See http://www.edsim51.com/8051Notes/8051/memory.html
 
@@ -68,31 +89,6 @@ var defineBit = function (varName, byteName, bit) {
 
 // Bytes 0x20-0x2F are bit addressable for general bit variables,
 // while many variables above 0x80 are also bit addressable.
-// Here are some helpful methods for finding and setting bits.
-var getBitAddr = function (bitAddr) {
-  if (bitAddr < 0x80) {
-    return [0x20 + (bitAddr >> 3), bitAddr % 8];
-  } else {
-    return [(bitAddr >> 3) << 3, bitAddr % 8];
-  }
-};
-
-var getBit = function (bitAddr) {
-  var addr = getBitAddr(bitAddr); // [byteAddr, bitNum]
-  var byteVal = InternalRAM[addr[0]];
-  return (byteVal >> addr[1]) & 1;
-};
-
-var setBit = function (bitAddr) {
-  var addr = getBitAddr(bitAddr); // [byteAddr, bitNum]
-  InternalRAM[addr[0]] |= (1 << addr[1]);
-};
-
-var clearBit = function (bitAddr) {
-  var addr = getBitAddr(bitAddr); // [byteAddr, bitNum]
-  InternalRAM[addr[0]] &= 0xFF - (1 << addr[1]);
-};
-
 // Bytes 0x30 - 0x7F are left as General Purpose RAM
 
 defineByte('P0', InternalRAM, 0x80);
@@ -146,13 +142,6 @@ Object.defineProperty(window, 'PC', {
     PCL = val % 0x100;
   }
 });
-
-// Source: Page 2-9
-SP = 0x07;
-P0 = 0xFF;
-P1 = 0xFF;
-P2 = 0xFF;
-P3 = 0xFF;
 
 // The bits in the SFR usually have names, so we assign those.
 defineBit('C',    'PSW',  7);
@@ -268,11 +257,11 @@ var opcodeByteCounts = [
 ];
 
 var readOpcodeAndArgs = function () {
-  var op = DataMemory[PC];
+  var op = getMemLoc(PC);
   var args = [];
   var i;
   for (i = 1; i < opcodeByteCounts[op]; i++) {
-    args.push(DataMemory[PC + i]);
+    args.push(getMemLoc(PC + i));
   }
   return [op, args];
 };
@@ -317,7 +306,7 @@ var fillMemoryFromHex = function () {
     PC = loadAddress;
     var i;
     for (i = 4; i < 4 + recordLength; i++) {
-      DataMemory[PC] = strToHex(bytes[i]);
+      setMemLoc(PC, strToHex(bytes[i]));
       PC = PC + 1;
     }
   });
@@ -326,7 +315,6 @@ var fillMemoryFromHex = function () {
 };
 
 addhex.onclick = fillMemoryFromHex;
-
 
 var runFromMemory = function () {
   runState = true;
@@ -344,6 +332,51 @@ var nextPC = function (opcode) {
   PC = PC + opcodeByteCounts[opcode];
 };
 
+// This is faster.
+var parityCounts = [
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0
+];
+var updateParityBit = function () {
+  P = parityCounts[A];
+};
+
+var getBitAddr = function (bitAddr) {
+  if (bitAddr < 0x80) {
+    return [0x20 + (bitAddr >> 3), bitAddr % 8];
+  } else {
+    return [(bitAddr >> 3) << 3, bitAddr % 8];
+  }
+};
+
+var getBit = function (bitAddr) {
+  var addr = getBitAddr(bitAddr); // [byteAddr, bitNum]
+  var byteVal = InternalRAM[addr[0]];
+  return (byteVal >> addr[1]) & 1;
+};
+
+var setBit = function (bitAddr, newVal) {
+  var addr = getBitAddr(bitAddr); // [byteAddr, bitNum]
+  if (newVal) {
+    InternalRAM[addr[0]] |= (1 << addr[1]);
+  } else {
+    InternalRAM[addr[0]] &= 0xFF - (1 << addr[1]);
+  }
+};
 
 Object.defineProperty(window, 'AtR0', {
   get: function () { return InternalRAM[R0]; },
@@ -361,8 +394,11 @@ var argsToData16 = function (arg, arg2) { return (arg << 8) + arg2; };
 var argsToAddr16 = function (arg, arg2) { return (arg << 8) + arg2; };
 var argsToAddr11 = function (arg) { return (arg << 8) + arg2; };
 var argsToRel = function (arg) { return ((arg + 128) % 256) - 128; };
-var argsToBit = function (arg) { return getBit(arg); };
-var opcodeToReg = function (opcode) { return window['R' + (opcode % 8)]; };
+var argsToBit = getBit;
+var getRnName = function (opcode) { return 'R' + (opcode % 8); };
+var getRn = function (opcode) { return window[getRnName(opcode)]; };
+var getAtRnName = function (opcode) { return (opcode & 1) ? 'AtR1' : 'AtR0'; };
+var getAtRn = function (opcode) { return window[getAtRnName(opcode)]; };
 var getCarryBits = function () {
   var args = [].slice.apply(arguments);
   return [0, 1, 2, 3, 4, 5, 6, 7].map(function(i) {
@@ -374,6 +410,7 @@ var getCarryBits = function () {
 };
 
 var stepInstruction = function () {
+  updateParityBit();
   var nextOpAndArgs = readOpcodeAndArgs();
   var opcode = nextOpAndArgs[0];
   var args   = nextOpAndArgs[1];
@@ -381,7 +418,7 @@ var stepInstruction = function () {
     'PC is at byte 0x' + intToHexStr(PC) + ': opcode ' + intToHexStr(opcode) + 
     ' [' + args.map(intToHexStr).join(', ') + ']'
   );
-  var carryBits, AtRn;
+  var tmp = {};
   var loadNextPC = true;
   switch (opcode) {
     case 0x00: // NOP
@@ -398,27 +435,26 @@ var stepInstruction = function () {
       // TODO: ACALL
       break;
     case 0x24: // ADD A, #data
-      carryBits = getCarryBits(A, argsToData(args[0]));
-      C = carryBits[7];
-      AC = carryBits[3];
-      OV = carryBits[6] ^ carryBits[7];
+      tmp.carryBits = getCarryBits(A, argsToData(args[0]));
+      C = tmp.carryBits[7];
+      AC = tmp.carryBits[3];
+      OV = tmp.carryBits[6] ^ tmp.carryBits[7];
       A = A + argsToData(args[0]);
       break;
     case 0x25: // ADD A, iram
-      carryBits = getCarryBits(A, argsToDirect(args[0]));
-      C = carryBits[7];
-      AC = carryBits[3];
-      OV = carryBits[6] ^ carryBits[7];
+      tmp.carryBits = getCarryBits(A, argsToDirect(args[0]));
+      C = tmp.carryBits[7];
+      AC = tmp.carryBits[3];
+      OV = tmp.carryBits[6] ^ tmp.carryBits[7];
       A = A + argsToDirect(args[0]);
       break;
     case 0x26: // ADD A, @Rn
     case 0x27:
-      AtRn = (opcode & 1) ? AtR1 : AtR0;
-      carryBits = getCarryBits(A, AtRn);
-      C = carryBits[7];
-      AC = carryBits[3];
-      OV = carryBits[6] ^ carryBits[7];
-      A = A + AtRn;
+      tmp.carryBits = getCarryBits(A, getAtRn(opcode));
+      C = tmp.carryBits[7];
+      AC = tmp.carryBits[3];
+      OV = tmp.carryBits[6] ^ tmp.carryBits[7];
+      A = A + getAtRn(opcode);
       break;
     case 0x28: // ADD A, R0
     case 0x29: // ADD A, R1
@@ -428,34 +464,34 @@ var stepInstruction = function () {
     case 0x2D: // ADD A, R5
     case 0x2E: // ADD A, R6
     case 0x2F: // ADD A, R7
-      carryBits = getCarryBits(A, opcodeToReg(opcode));
-      C = carryBits[7];
-      AC = carryBits[3];
-      OV = carryBits[6] ^ carryBits[7];
-      A = A + opcodeToReg(opcode);
+      tmp.carryBits = getCarryBits(A, getRn(opcode));
+      C = tmp.carryBits[7];
+      AC = tmp.carryBits[3];
+      OV = tmp.carryBits[6] ^ tmp.carryBits[7];
+      A = A + getRn(opcode);
       break;
     case 0x34: // ADDC A, #data
-      carryBits = getCarryBits(A, C, argsToData(args[0]));
-      C = carryBits[7];
-      AC = carryBits[3];
-      OV = carryBits[6] ^ carryBits[7];
+      tmp.carryBits = getCarryBits(A, C, argsToData(args[0]));
+      C = tmp.carryBits[7];
+      AC = tmp.carryBits[3];
+      OV = tmp.carryBits[6] ^ tmp.carryBits[7];
       A = A + C + argsToData(args[0]);
       break;
     case 0x35: // ADDC A, iram
-      carryBits = getCarryBits(A, C, argsToDirect(args[0]));
-      C = carryBits[7];
-      AC = carryBits[3];
-      OV = carryBits[6] ^ carryBits[7];
+      tmp.carryBits = getCarryBits(A, C, argsToDirect(args[0]));
+      C = tmp.carryBits[7];
+      AC = tmp.carryBits[3];
+      OV = tmp.carryBits[6] ^ tmp.carryBits[7];
       A = A + C + argsToDirect(args[0]);
       break;
     case 0x36: // ADDC A, @R0
     case 0x37: // ADDC A, @R1
-      AtRn = (opcode & 1) ? AtR1 : AtR0;
-      carryBits = getCarryBits(A, C, AtRn);
-      C = carryBits[7];
-      AC = carryBits[3];
-      OV = carryBits[6] ^ carryBits[7];
-      A = A + C + AtRn;
+      // AtRn = (opcode & 1) ? AtR1 : AtR0;
+      tmp.carryBits = getCarryBits(A, C, getAtRn(opcode));
+      C = tmp.carryBits[7];
+      AC = tmp.carryBits[3];
+      OV = tmp.carryBits[6] ^ tmp.carryBits[7];
+      A = A + C + getAtRn(opcode);
       break;
     case 0x38: // ADDC A, Rn
     case 0x39: // ADDC A, R1
@@ -465,11 +501,11 @@ var stepInstruction = function () {
     case 0x3D: // ADDC A, R5
     case 0x3E: // ADDC A, R6
     case 0x3F: // ADDC A, R7
-      carryBits = getCarryBits(A, C, opcodeToReg(opcode));
-      C = carryBits[7];
-      AC = carryBits[3];
-      OV = carryBits[6] ^ carryBits[7];
-      A = A + C + opcodeToReg(opcode);
+      tmp.carryBits = getCarryBits(A, C, getRn(opcode));
+      C = tmp.carryBits[7];
+      AC = tmp.carryBits[3];
+      OV = tmp.carryBits[6] ^ tmp.carryBits[7];
+      A = A + C + getRn(opcode);
       break;
     case 0x01: // AJMP page0
     case 0x21: // AJMP page1
@@ -495,7 +531,7 @@ var stepInstruction = function () {
       break;
     case 0x56: // ANL A, @R0
     case 0x57: // ANL A, @R1
-      A = A & (opcode & 1) ? AtR1 : AtR0;
+      A = A & getAtRn(opcode);
       break;
     case 0x58: // ANL A, R0
     case 0x59: // ANL A, R1
@@ -505,7 +541,7 @@ var stepInstruction = function () {
     case 0x5D: // ANL A, R5
     case 0x5E: // ANL A, R6
     case 0x5F: // ANL A, R7
-      A = A & opcodeToReg(opcode);
+      A = A & getRn(opcode);
       break;
     case 0x82: // ANL C, bit
       C = C & argsToBit(args[0]);
@@ -533,11 +569,10 @@ var stepInstruction = function () {
     case 0xB6: // CJNE @R1, iram, rel
       nextPC(opcode);
       loadNextPC = false;
-      AtRn = (opcode & 1) ? AtR1 : AtR0;
-      if (AtRn !== argsToData(args[0])) {
+      if (getAtRn(opcode) !== argsToData(args[0])) {
         PC = PC + argsToRel(args[1]);
       }
-      C = AtRn < argsToData(args[0]);
+      C = getAtRn(opcode) < argsToData(args[0]);
       break;
     case 0xB8: // CJNE R0, #data, rel
     case 0xB9: // CJNE R1, #data, rel
@@ -549,13 +584,13 @@ var stepInstruction = function () {
     case 0xBF: // CJNE R7, #data, rel
       nextPC(opcode);
       loadNextPC = false;
-      if (opcodeToReg(opcode) !== argsToData(args[0])) {
+      if (getRn(opcode) !== argsToData(args[0])) {
         PC = PC + argsToRel(args[1]);
       }
-      C = opcodeToReg(opcode) < argsToData(args[0]);
+      C = getRn(opcode) < argsToData(args[0]);
       break;
     case 0xC2: // CLR bit
-      clearBit(args[0]);
+      setBit(args[0], 0);
       break;
     case 0xC3: // CLR C
       C = 0;
@@ -570,7 +605,7 @@ var stepInstruction = function () {
       C = 1 - C;
       break;
     case 0xB2: // CPL bit
-      argsToBit(args[0]) ? clearBit(args[0]) : setBit(args[0]);
+      setBit(args[0], !getBit(args[0]));
       break;
     case 0xD4: // DA A
       // TODO: DA
@@ -582,10 +617,8 @@ var stepInstruction = function () {
       InternalRAM[args[0]] -= 1;
       break;
     case 0x56: // DEC @R0
-      AtR0 -= 1;
-      break;
     case 0x57: // DEC @R1
-      AtR1 -= 1;
+      window[getAtRnName(opcode)] -= 1;
       break;
     case 0x58: // DEC R0
     case 0x59: // DEC R1
@@ -595,22 +628,321 @@ var stepInstruction = function () {
     case 0x5D: // DEC R5
     case 0x5E: // DEC R6
     case 0x5F: // DEC R7
-      opcodeToReg(opcode) -= 1;
+      window[getRnName(opcode)] -= 1;
       break;
-    /****original below****/
+    case 0x84: // DIV AB
+      C = 0;
+      OV = (B === 0);
+      tmp.rem = A % B;
+      tmp.div = (A - tmp.rem) / B;
+      A = tmp.div;
+      B = tmp.rem;
+      break;
+    case 0xD5: // DJNZ iram, rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (--InternalRAM[args[0]]) {
+        PC = PC + argsToRel(args[1]);
+      }
+      break;
+    case 0xD8: // DJNZ R0, rel
+    case 0xD9: // DJNZ R1, rel
+    case 0xDA: // DJNZ R2, rel
+    case 0xDB: // DJNZ R3, rel
+    case 0xDC: // DJNZ R4, rel
+    case 0xDD: // DJNZ R5, rel
+    case 0xDE: // DJNZ R6, rel
+    case 0xDF: // DJNZ R7, rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (--window[getRnName(opcode)]) {
+        PC = PC + argsToRel(args[1]);
+      }
+      break;
+    case 0x04: // INC A
+      A = A + 1;
+      break;
+    case 0x05: // INC iram
+      InternalRAM[args[0]]++;
+      break;
+    case 0x06: // INC @R0
+    case 0x07: // INC @R1
+      window[getAtRnName(opcode)]++;
+      break;
+    case 0x08: // INC R0
+    case 0x09: // INC R1
+    case 0x0A: // INC R2
+    case 0x0B: // INC R3
+    case 0x0C: // INC R4
+    case 0x0D: // INC R5
+    case 0x0E: // INC R6
+    case 0x0F: // INC R7
+      window[getRnName(opcode)]++;
+      break;
+    case 0xA3: // INC DPTR
+      DPTR++;
+      break;
+    case 0x20: // JB bit, rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (argsToBit(args[0]) {
+        PC = PC + argsToRel(args[1]);
+      }
+      break;
+    case 0x10: // JBC bit, rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (argsToBit(args[0]) {
+        setBit(args[0], 0);
+        PC = PC + argsToRel(args[1]);
+      }
+      break;
+    case 0x40: // JC rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (C) {
+        PC = PC + argsToRel(args[0]);
+      }
+      break;
+    case 0x73: // JMP
+      PC = A + DPTR;
+      break;
+    case 0x30: // JNB bit, rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (!argsToBit(args[0]) {
+        PC = PC + argsToRel(args[1]);
+      }
+      break;
+    case 0x50: // JNC rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (!C) {
+        PC = PC + argsToRel(args[0]);
+      }
+      break;
+    case 0x70: // JNZ rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (A) {
+        PC = PC + argsToRel(args[0]);
+      }
+      break;
+    case 0x60: // JZ rel
+      nextPC(opcode);
+      loadNextPC = false;
+      if (!A) {
+        PC = PC + argsToRel(args[0]);
+      }
+      break;
+    case 0x12: // LCALL addr16
+      nextPC(opcode);
+      loadNextPC = false;
+      SP = SP + 1;
+      InternalRam[SP] = PCL;
+      SP = SP + 1;
+      InternalRam[SP] = PCH;
+      PC = argsToAddr16(args[0], args[1]);
+      break;
+    case 0x02: // LJMP addr16
+      nextPC(opcode);
+      loadNextPC = false;
+      PC = argsToAddr16(args[0], args[1]);
+      break;
+    case 0x76: // MOV @R0, #data
+    case 0x77: // MOV @R1, #data
+      window[getAtRnName(opcode)] = argsToData(args[0]);
+      break;
+    case 0xF6: // MOV @R0, A
+    case 0xF7: // MOV @R1, A
+      window[getAtRnName(opcode)] = A;
+      break;
+    case 0xA6: // MOV @R0, iram
+    case 0xA7: // MOV @R1, iram
+      window[getAtRnName(opcode)] = InternalRAM[args[0]];
+      break;
     case 0x74: // MOV A, #data
-      A = args[0];
+      A = argsToData(args[0]);
+      break;
+    case 0xE6: // MOV A, @R0
+    case 0xE7: // MOV A, @R1
+      A = getRnName(opcode);
+      break;
+    case 0xE8: // MOV A, R0
+    case 0xE9: // MOV A, R1
+    case 0xEA: // MOV A, R2
+    case 0xEB: // MOV A, R3
+    case 0xEC: // MOV A, R4
+    case 0xED: // MOV A, R5
+    case 0xEE: // MOV A, R6
+    case 0xEF: // MOV A, R7
+      A = getRn(opcode);
+      break;
+    case 0xE5: // MOV A, iram
+      A = InternalRAM[args[0]];
+      break;
+    case 0xA2: // MOV C, bit
+      C = argsToBit(args[0]);
+      break;
+    case 0x90: // MOV DPTR, #data16
+      DPTR = argsToData16(args[0], args[1]);
+      break;
+    case 0x78: // MOV R0, #data
+    case 0x79: // MOV R1, #data
+    case 0x7A: // MOV R2, #data
+    case 0x7B: // MOV R3, #data
+    case 0x7C: // MOV R4, #data
+    case 0x7D: // MOV R5, #data
+    case 0x7E: // MOV R6, #data
+    case 0x7F: // MOV R7, #data
+      window[getRnName(opcode)] = argsToData(args[0]);
+      break;
+    case 0xF8: // MOV R0, A
+    case 0xF9: // MOV R1, A
+    case 0xFA: // MOV R2, A
+    case 0xFB: // MOV R3, A
+    case 0xFC: // MOV R4, A
+    case 0xFD: // MOV R5, A
+    case 0xFE: // MOV R6, A
+    case 0xFF: // MOV R7, A
+      window[getRnName(opcode)] = A;
+      break;
+    case 0xA8: // MOV R0, iram
+    case 0xA9: // MOV R1, iram
+    case 0xAA: // MOV R2, iram
+    case 0xAB: // MOV R3, iram
+    case 0xAC: // MOV R4, iram
+    case 0xAD: // MOV R5, iram
+    case 0xAE: // MOV R6, iram
+    case 0xAF: // MOV R7, iram
+      window[getRnName(opcode)] = InternalRAM[args[0]];
+      break;
+    case 0x92: // MOV bit, C
+      setBit(args[0], C);
+      break;
+    case 0x75: // MOV iram, #data
+      InternalRAM[args[0]] = argsToData(args[1]);
+      break;
+    case 0x86: // MOV iram, @R0
+    case 0x87: // MOV iram, @R1
+      InternalRAM[args[0]] = getAtRn(opcode);
+      break;
+    case 0x88: // MOV iram, R0
+    case 0x89: // MOV iram, R1
+    case 0x8A: // MOV iram, R2
+    case 0x8B: // MOV iram, R3
+    case 0x8C: // MOV iram, R4
+    case 0x8D: // MOV iram, R5
+    case 0x8E: // MOV iram, R6
+    case 0x8F: // MOV iram, R7
+      InternalRAM[args[0]] = getRn(opcode);
+      break;
+    case 0xF5: // MOV iram, A
+      InternalRAM[args[0]] = A;
       break;
     case 0x85: // MOV iram, iram
       InternalRAM[args[1]] = InternalRAM[args[0]];
       break;
-    case 0xD2: // SETB bit addr
-      setBit(args[0]);
+    case 0x93: // MOVC A, @A + DPTR
+      A = getMemLoc(A + DPTR);
+      break;
+    case 0x83: // MOVC A, @A + PC
+      A = getMemLoc(A + PC);
+      break;
+    case 0xF0: // MOVX @DPTR, A
+      setMemLoc(DPTR, A);
+      break;
+    case 0xF2: // MOVX @R0, A
+    case 0xF3: // MOVX @R1, A
+      setMemLoc(getAtRn(opcode), A);
+      break;
+    case 0xE0: // MOVX A, @DPTR
+      A = getMemLoc(DPTR);
+      break;
+    case 0xE2: // MOVX A, @R0
+    case 0xE3: // MOVX A, @R1
+      A = getMemLoc(getAtRn(opcode));
+      break;
+    case 0xA4: // MUL AB
+      tmp.product = A * B;
+      C = 0;
+      OV = (tmp.product > 255);
+      A = tmp.product % 256;
+      B = tmp.product >> 8;
+      break;
+    case 0x42: // ORL iram, A
+      InternalRAM[args[0]] = argsToDirect(args[0]) | A;
+      break;
+    case 0x43: // ORL iram, #data
+      InternalRAM[args[0]] = argsToDirect(args[0]) | argsToData(args[1]);
+      break;
+    case 0x44: // ORL A, #data
+      A = A | argsToData(args[0]);
+      break;
+    case 0x45: // ORL A, iram
+      A = A | argsToDirect(args[0]);
+      break;
+    case 0x46: // ORL A, @R0
+    case 0x47: // ORL A, @R1
+      A = A | getAtRn(opcode);
+      break;
+    case 0x48: // ORL A, R0
+    case 0x49: // ORL A, R1
+    case 0x4A: // ORL A, R2
+    case 0x4B: // ORL A, R3
+    case 0x4C: // ORL A, R4
+    case 0x4D: // ORL A, R5
+    case 0x4E: // ORL A, R6
+    case 0x4F: // ORL A, R7
+      A = A | getRn(opcode);
+      break;
+    case 0x72: // ORL C, bit
+      C = C | argsToBit(args[0]);
+      break;
+    case 0xA0: // ORL C, !bit
+      C = C | !argsToBit(args[0]);
+      break;
+    case 0xD0: // POP iram
+      InternalRAM[args[0]] = InternalRAM[SP];
+      SP = SP - 1;
+      break;
+    case 0xC0: // PUSH iram
+      SP = SP + 1;
+      InternalRAM[SP] = InternalRAM[args[0]];
+      break;
+    case 0x22: // RET
+    case 0x32: // RETI
+      loadNextPC = false;
+      PCH = InternalRAM[SP];
+      SP = SP - 1;
+      PCL = InternalRAM[SP];
+      SP = SP - 1;
+    case 0x23: // RL A
+      tmp.A7 = (A >> 7) & 1;
+      A = (A << 1) + tmp.A7;
+      break;
+    case 0x33: // RLC A
+      tmp.A7 = (A >> 7) & 1;
+      A = (A << 1) + C;
+      C = tmp.A7;
+      break;
+    case 0x03: // RR A
+      tmp.A0 = A & 1;
+      A = (A >> 1) + (tmp.A0 << 7);
+      break;
+    case 0x13: // RRC A
+      tmp.A0 = A & 1;
+      A = (A >> 1) + (C << 7);
+      C = tmp.A0;
+      break;
+    case 0xD3: // SETB C
+      C = 1;
+      break;
+    case 0xD2: // SETB bit
+      setBit(args[0], 1);
       break;
     case 0x80: // SJMP reladdr
-      var tmp = new Int8Array(1);
-      tmp[0] += args[0];
-      PC = PC + tmp[0];
+      PC = PC + argsToRel(args[0]);
       break;
   }
   if (loadNextPC) {
@@ -637,7 +969,16 @@ var updateState = function () {
   });
 };
 
-updateState();
+var reset = function () {
+  PC = 0x00;
+  SP = 0x07;
+  P0 = 0xFF;
+  P1 = 0xFF;
+  P2 = 0xFF;
+  P3 = 0xFF;
+  updateState();
+}
+
 
 runstop.onclick = function () {
   runState ? stopFromMemory() : runFromMemory();
