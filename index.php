@@ -34,7 +34,7 @@ $nocache = "";
 <input type="button" id="addhex" value="Add Hex File to Memory" />
 <input type="button" id="runstop" value="Run from Memory" />
 <div class="lightBank P1">
-<span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span><span class="lightBulb"></span>
+<span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span>
 </div>
 <script src="http://fb.me/react-0.8.0.min.js"></script>
 <script src="http://fb.me/JSXTransformer-0.8.0.js"></script>

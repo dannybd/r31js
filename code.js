@@ -150,7 +150,7 @@ defineBit('AC',   'PSW',  6);
 defineBit('F0',   'PSW',  5);
 defineBit('RS1',  'PSW',  4);
 defineBit('RS0',  'PSW',  3);
-defineBit('OV',   'PSW',  2); // TODO
+defineBit('OV',   'PSW',  2);
 defineBit('P',    'PSW',  0); // TODO
 
 defineBit('SMOD', 'PCON', 7);
@@ -685,14 +685,14 @@ var stepInstruction = function () {
     case 0x20: // JB bit, rel
       nextPC(opcode);
       loadNextPC = false;
-      if (argsToBit(args[0]) {
+      if (argsToBit(args[0])) {
         PC = PC + argsToRel(args[1]);
       }
       break;
     case 0x10: // JBC bit, rel
       nextPC(opcode);
       loadNextPC = false;
-      if (argsToBit(args[0]) {
+      if (argsToBit(args[0])) {
         setBit(args[0], 0);
         PC = PC + argsToRel(args[1]);
       }
@@ -710,7 +710,7 @@ var stepInstruction = function () {
     case 0x30: // JNB bit, rel
       nextPC(opcode);
       loadNextPC = false;
-      if (!argsToBit(args[0]) {
+      if (!argsToBit(args[0])) {
         PC = PC + argsToRel(args[1]);
       }
       break;
@@ -943,6 +943,111 @@ var stepInstruction = function () {
       break;
     case 0x80: // SJMP reladdr
       PC = PC + argsToRel(args[0]);
+      break;
+    case 0x94: // SUBB A, #data
+      temp.diff = A - argsToData(args[0]);
+      AC = (argsToData(args[0]) % 16) > (A % 16);
+      OV = (temp.diff < -128) || (temp.diff > 127);
+      A = temp.diff - C;
+      C = temp.diff < 0;
+      break;
+    case 0x95: // SUBB A, iram
+      temp.diff = A - argsToDirect(args[0]);
+      AC = (argsToDirect(args[0]) % 16) > (A % 16);
+      OV = (temp.diff < -128) || (temp.diff > 127);
+      A = temp.diff - C;
+      C = temp.diff < 0;
+      break;
+    case 0x96: // SUBB A, @Rn
+    case 0x97:
+      temp.diff = A - getAtRn(opcode);
+      AC = (getAtRn(opcode) % 16) > (A % 16);
+      OV = (temp.diff < -128) || (temp.diff > 127);
+      A = temp.diff - C;
+      C = temp.diff < 0;
+      break;
+    case 0x98: // SUBB A, R0
+    case 0x99: // SUBB A, R1
+    case 0x9A: // SUBB A, R2
+    case 0x9B: // SUBB A, R3
+    case 0x9C: // SUBB A, R4
+    case 0x9D: // SUBB A, R5
+    case 0x9E: // SUBB A, R6
+    case 0x9F: // SUBB A, R7
+      temp.diff = A - getRn(opcode);
+      AC = (getRn(opcode) % 16) > (A % 16);
+      OV = (temp.diff < -128) || (temp.diff > 127);
+      A = temp.diff - C;
+      C = temp.diff < 0;
+      break;
+    case 0xC4: // SWAP A
+      tmp.AH = A >> 4;
+      tmp.AL = A % 16;
+      A = (tmp.AL << 4) + tmp.AH;
+      break;
+    case 0xA5: // Unknown.
+      break;
+    case 0xC6: // XCH A, @R0
+    case 0xC7: // XCH A, @R1
+      tmp.XCH = A;
+      A = getAtRn(opcode);
+      window[getAtRnName(opcode)] = tmp.XCH;
+      break;
+    case 0xC8: // XCH A, R0
+    case 0xC9: // XCH A, R1
+    case 0xCA: // XCH A, R2
+    case 0xCB: // XCH A, R3
+    case 0xCC: // XCH A, R4
+    case 0xCD: // XCH A, R5
+    case 0xCE: // XCH A, R6
+    case 0xCF: // XCH A, R7
+      tmp.XCH = A;
+      A = getRn(opcode);
+      window[getRnName(opcode)] = tmp.XCH;
+      break;
+    case 0xC5: // XCH A, iram
+      tmp.XCH = A;
+      A = InternalRAM[args[0]];
+      InternalRAM[args[0]] = tmp.XCH;
+      break;
+    case 0xD6: // XCHD A, @R0
+    case 0xD7: // XCHD A, @R1
+      tmp.AL = A % 16;
+      tmp.AtRnL = getAtRn(opcode) % 16;
+      A = A - tmp.AL + tmp.AtRnL;
+      window[getAtRnName(opcode)] += tmp.AL - tmp.AtRnL;
+      break;
+    case 0x42: // XRL iram, A
+      InternalRAM[args[0]] = argsToDirect(args[0]) ^ A;
+      break;
+    case 0x43: // XRL iram, #data
+      InternalRAM[args[0]] = argsToDirect(args[0]) ^ argsToData(args[1]);
+      break;
+    case 0x44: // XRL A, #data
+      A = A ^ argsToData(args[0]);
+      break;
+    case 0x45: // XRL A, iram
+      A = A ^ argsToDirect(args[0]);
+      break;
+    case 0x46: // XRL A, @R0
+    case 0x47: // XRL A, @R1
+      A = A ^ getAtRn(opcode);
+      break;
+    case 0x48: // XRL A, R0
+    case 0x49: // XRL A, R1
+    case 0x4A: // XRL A, R2
+    case 0x4B: // XRL A, R3
+    case 0x4C: // XRL A, R4
+    case 0x4D: // XRL A, R5
+    case 0x4E: // XRL A, R6
+    case 0x4F: // XRL A, R7
+      A = A ^ getRn(opcode);
+      break;
+    case 0x72: // XRL C, bit
+      C = C ^ argsToBit(args[0]);
+      break;
+    case 0xA0: // XRL C, !bit
+      C = C ^ !argsToBit(args[0]);
       break;
   }
   if (loadNextPC) {
