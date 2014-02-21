@@ -28,11 +28,12 @@ $nocache = "";
 	</script>
 </head>
 <body>
-<textarea id="hexfile" rows="20" cols="80">:10000000740085E090D29280F7362E31313520523F
-:050010006F636B73211A
+<textarea id="hexfile" rows="20" cols="80">:108000007590807480797F7A7F03F59020E00280FC
+:09801000F823F59020E7F280F856
 :00000001FF</textarea><br>
 <input type="button" id="addhex" value="Add Hex File to Memory" />
 <input type="button" id="runstop" value="Run from Memory" />
+<input type="button" id="monrun" value="MON mode: click to change" />
 <div class="lightBank P1">
 <span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span>
 </div>

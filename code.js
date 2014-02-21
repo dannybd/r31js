@@ -2,6 +2,8 @@
 
 var hexfile = document.getElementById('hexfile');
 var addhex  = document.getElementById('addhex');
+var runstop = document.getElementById('runstop');
+var monrun  = document.getElementById('monrun');
 
 Uint8Array.prototype.clear = function() { this.set(Array(this.length)); }
 
@@ -10,7 +12,13 @@ var DataMemory    = new Uint8Array(0x8000); // RAM
 var InternalRAM   = new Uint8Array(0x100);
 
 var Modes = { MON: 0, RUN: 1 };
-var Mode = Modes.RUN;
+var Mode = Modes.MON;
+
+monrun.onclick = function () {
+  monrun.value = (Mode ? 'MON' : 'RUN') + ' mode: click to change';
+  Mode = 1 - Mode;
+  reset();
+};
 
 var getMemLoc = function (addr) {
   var subAddr = addr & 0x7FFF;
@@ -23,7 +31,7 @@ var getMemLoc = function (addr) {
 
 var setMemLoc = function (addr, newVal) {
   var subAddr = addr & 0x7FFF;
-  if ((Mode === Modes.MON) ^ (addr > 0x7FFF)) {
+  if ((Mode === Modes.RUN) ^ (addr > 0x7FFF)) {
     ProgramMemory[subAddr] = newVal;
   } else {
     DataMemory[subAddr] = newVal;
@@ -33,7 +41,7 @@ var setMemLoc = function (addr, newVal) {
 // See http://www.edsim51.com/8051Notes/8051/memory.html
 
 var runState = false;
-var runSpeed = 8; // in steps per second
+var runSpeed = 50; // in steps per second
 
 var verbose = true;
 var log = function() {
@@ -43,9 +51,15 @@ var log = function() {
 };
 
 var strToHex = function (n) { return parseInt(n, 16); };
-var intToHexStr = function (n) { return n.toString(16).toUpperCase(); };
+var intToHexStr = function (n, minBits) { 
+  minBits = minBits || 0;
+  var hex = Array(minBits + 1).join('0');
+  hex += n.toString(16).toUpperCase();
+  return minBits ? hex.substr(hex.length - minBits) : hex;
+  
+};
 var byteToBits = function (n) { 
-  return [7, 6, 5, 4, 3, 2, 1, 0].map(function (i) { return (n >> i) & 1; });
+  return [0,1,2,3,4,5,6,7].map(function (i) { return (n >> i) & 1; });
 };
 
 var defineByte = function (varName, memorySpace, addr) {
@@ -274,7 +288,9 @@ var printMemoryHead = function () {
   str += '-----------------------------------\n'; 
   str += [].slice
             .apply(DataMemory.subarray(0,0xFF))
-            .map(intToHexStr).join('\t').match(/(\w+\t){16}/g)
+            .map(function (x) {
+              return intToHexStr(x, 2);
+            }).join('\t').match(/(\w+\t){16}/g)
             .map(function (x, i) { 
               return '0x' + intToHexStr(i) + '_ |\t' + x; 
             }).join('\n');
@@ -303,7 +319,7 @@ var fillMemoryFromHex = function () {
       log('End record type detected!');
       return;
     }
-    PC = loadAddress;
+    PC = (0x8000 + loadAddress) % 0x10000;
     var i;
     for (i = 4; i < 4 + recordLength; i++) {
       setMemLoc(PC, strToHex(bytes[i]));
@@ -415,7 +431,7 @@ var stepInstruction = function () {
   var opcode = nextOpAndArgs[0];
   var args   = nextOpAndArgs[1];
   log(
-    'PC is at byte 0x' + intToHexStr(PC) + ': opcode ' + intToHexStr(opcode) + 
+    'PC is at byte 0x' + intToHexStr(PC, 4) + ': opcode ' + intToHexStr(opcode) + 
     ' [' + args.map(intToHexStr).join(', ') + ']'
   );
   var tmp = {};
@@ -641,7 +657,8 @@ var stepInstruction = function () {
     case 0xD5: // DJNZ iram, rel
       nextPC(opcode);
       loadNextPC = false;
-      if (--InternalRAM[args[0]]) {
+      InternalRAM[args[0]] -= 1;
+      if (InternalRAM[args[0]]) {
         PC = PC + argsToRel(args[1]);
       }
       break;
@@ -655,7 +672,8 @@ var stepInstruction = function () {
     case 0xDF: // DJNZ R7, rel
       nextPC(opcode);
       loadNextPC = false;
-      if (--window[getRnName(opcode)]) {
+      window[getRnName(opcode)] -= 1;
+      if (getRn(opcode)) {
         PC = PC + argsToRel(args[1]);
       }
       break;
@@ -1056,6 +1074,9 @@ var stepInstruction = function () {
   updateState();
   if (runState) {
     runState = setTimeout(stepInstruction, 1000 / runSpeed);
+    if (!(runState % 100)) {
+      console.clear();
+    }
   }
 };
 
@@ -1083,7 +1104,6 @@ var reset = function () {
   P3 = 0xFF;
   updateState();
 }
-
 
 runstop.onclick = function () {
   runState ? stopFromMemory() : runFromMemory();
