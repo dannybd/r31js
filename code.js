@@ -58,6 +58,9 @@ var intToHexStr = function (n, minBits) {
   return minBits ? hex.substr(hex.length - minBits) : hex;
   
 };
+var intToByteStr = function (n) {
+  return intToHexStr(n, 2);
+};
 var byteToBits = function (n) { 
   return [0,1,2,3,4,5,6,7].map(function (i) { return (n >> i) & 1; });
 };
@@ -288,9 +291,7 @@ var printMemoryHead = function () {
   str += '-----------------------------------\n'; 
   str += [].slice
             .apply(DataMemory.subarray(0,0xFF))
-            .map(function (x) {
-              return intToHexStr(x, 2);
-            }).join('\t').match(/(\w+\t){16}/g)
+            .map(intToByteStr).join('\t').match(/(\w+\t){16}/g)
             .map(function (x, i) { 
               return '0x' + intToHexStr(i) + '_ |\t' + x; 
             }).join('\n');
@@ -431,8 +432,8 @@ var stepInstruction = function () {
   var opcode = nextOpAndArgs[0];
   var args   = nextOpAndArgs[1];
   log(
-    'PC is at byte 0x' + intToHexStr(PC, 4) + ': opcode ' + intToHexStr(opcode) + 
-    ' [' + args.map(intToHexStr).join(', ') + ']'
+    'PC is at byte 0x' + intToHexStr(PC, 4) + ': opcode ' + 
+    intToByteStr(opcode) + ' [' + args.map(intToByteStr).join(', ') + ']'
   );
   var tmp = {};
   var loadNextPC = true;
@@ -757,9 +758,9 @@ var stepInstruction = function () {
       nextPC(opcode);
       loadNextPC = false;
       SP = SP + 1;
-      InternalRam[SP] = PCL;
+      InternalRAM[SP] = PCL;
       SP = SP + 1;
-      InternalRam[SP] = PCH;
+      InternalRAM[SP] = PCH;
       PC = argsToAddr16(args[0], args[1]);
       break;
     case 0x02: // LJMP addr16
@@ -963,26 +964,26 @@ var stepInstruction = function () {
       PC = PC + argsToRel(args[0]);
       break;
     case 0x94: // SUBB A, #data
-      temp.diff = A - argsToData(args[0]);
+      tmp.diff = A - argsToData(args[0]);
       AC = (argsToData(args[0]) % 16) > (A % 16);
-      OV = (temp.diff < -128) || (temp.diff > 127);
-      A = temp.diff - C;
-      C = temp.diff < 0;
+      OV = (tmp.diff < -128) || (tmp.diff > 127);
+      A = tmp.diff - C;
+      C = tmp.diff < 0;
       break;
     case 0x95: // SUBB A, iram
-      temp.diff = A - argsToDirect(args[0]);
+      tmp.diff = A - argsToDirect(args[0]);
       AC = (argsToDirect(args[0]) % 16) > (A % 16);
-      OV = (temp.diff < -128) || (temp.diff > 127);
-      A = temp.diff - C;
-      C = temp.diff < 0;
+      OV = (tmp.diff < -128) || (tmp.diff > 127);
+      A = tmp.diff - C;
+      C = tmp.diff < 0;
       break;
     case 0x96: // SUBB A, @Rn
     case 0x97:
-      temp.diff = A - getAtRn(opcode);
+      tmp.diff = A - getAtRn(opcode);
       AC = (getAtRn(opcode) % 16) > (A % 16);
-      OV = (temp.diff < -128) || (temp.diff > 127);
-      A = temp.diff - C;
-      C = temp.diff < 0;
+      OV = (tmp.diff < -128) || (tmp.diff > 127);
+      A = tmp.diff - C;
+      C = tmp.diff < 0;
       break;
     case 0x98: // SUBB A, R0
     case 0x99: // SUBB A, R1
@@ -992,11 +993,11 @@ var stepInstruction = function () {
     case 0x9D: // SUBB A, R5
     case 0x9E: // SUBB A, R6
     case 0x9F: // SUBB A, R7
-      temp.diff = A - getRn(opcode);
+      tmp.diff = A - getRn(opcode);
       AC = (getRn(opcode) % 16) > (A % 16);
-      OV = (temp.diff < -128) || (temp.diff > 127);
-      A = temp.diff - C;
-      C = temp.diff < 0;
+      OV = (tmp.diff < -128) || (tmp.diff > 127);
+      A = tmp.diff - C;
+      C = tmp.diff < 0;
       break;
     case 0xC4: // SWAP A
       tmp.AH = A >> 4;
@@ -1074,7 +1075,7 @@ var stepInstruction = function () {
   updateState();
   if (runState) {
     runState = setTimeout(stepInstruction, 1000 / runSpeed);
-    if (!(runState % 100)) {
+    if (verbose && !(runState % 100)) {
       console.clear();
     }
   }
