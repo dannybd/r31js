@@ -1,15 +1,16 @@
 /** @jsx React.DOM */
 
 var hexfile = document.getElementById('hexfile');
+var terminal = document.getElementById('terminal');
 var addhex  = document.getElementById('addhex');
 var runstop = document.getElementById('runstop');
 var monrun  = document.getElementById('monrun');
 
 Uint8Array.prototype.clear = function() { this.set(Array(this.length)); }
 
-var ProgramMemory = new Uint8Array(0x8000); // EPROM
-var DataMemory    = new Uint8Array(0x8000); // RAM
-var InternalRAM   = new Uint8Array(0x100);
+var ExternalROM = new Uint8Array(0x8000); // EPROM
+var ExternalRAM = new Uint8Array(0x8000); // RAM
+var InternalRAM = new Uint8Array(0x100);
 
 var Modes = { MON: 0, RUN: 1 };
 var Mode = Modes.MON;
@@ -23,25 +24,25 @@ monrun.onclick = function () {
 var getMemLoc = function (addr) {
   var subAddr = addr & 0x7FFF;
   if ((Mode === Modes.MON) ^ (addr > 0x7FFF)) {
-    return ProgramMemory[subAddr];
+    return ExternalROM[subAddr];
   } else {
-    return DataMemory[subAddr];
+    return ExternalRAM[subAddr];
   }
 };
 
 var setMemLoc = function (addr, newVal) {
   var subAddr = addr & 0x7FFF;
-  if ((Mode === Modes.RUN) ^ (addr > 0x7FFF)) {
-    ProgramMemory[subAddr] = newVal;
+  if ((Mode === Modes.MON) ^ (addr > 0x7FFF)) {
+    ExternalROM[subAddr] = newVal;
   } else {
-    DataMemory[subAddr] = newVal;
+    ExternalRAM[subAddr] = newVal;
   }
 }
 
 // See http://www.edsim51.com/8051Notes/8051/memory.html
 
 var runState = false;
-var runSpeed = 50; // in steps per second
+var runSpeed = 500; // in steps per second
 
 var verbose = true;
 var log = function() {
@@ -132,7 +133,23 @@ defineByte('TH1', InternalRAM, 0x8D);
 defineByte('P1', InternalRAM, 0x90);
 
 defineByte('SCON', InternalRAM, 0x98);
-defineByte('SBUF', InternalRAM, 0x99);
+Object.defineProperty(window, 'SBUF', {
+  get: function () { return InternalRAM[0x99]; },
+  set: function (val) { 
+    if (window.debug) {
+      debugger;
+    }
+    InternalRAM[0x99] = val; 
+    if (!terminal.keydown) {
+      terminal.sndchr(val); 
+    }
+  }
+});
+var updateOnSBUFWrite = function (addr) {
+  if (addr === 0x99) {
+    SBUF = SBUF;
+  };
+};
 
 defineByte('P2', InternalRAM, 0xA0);
 
@@ -161,14 +178,14 @@ Object.defineProperty(window, 'PC', {
 });
 
 // The bits in the SFR usually have names, so we assign those.
-defineBit('C',    'PSW',  7);
-defineBit('CY',   'PSW',  7);
-defineBit('AC',   'PSW',  6);
-defineBit('F0',   'PSW',  5);
-defineBit('RS1',  'PSW',  4);
-defineBit('RS0',  'PSW',  3);
-defineBit('OV',   'PSW',  2);
-defineBit('P',    'PSW',  0); // TODO
+defineBit('C',    'PSW',  7); // bit D7
+defineBit('CY',   'PSW',  7); // bit D7
+defineBit('AC',   'PSW',  6); // bit D6
+defineBit('F0',   'PSW',  5); // bit D5
+defineBit('RS1',  'PSW',  4); // bit D4
+defineBit('RS0',  'PSW',  3); // bit D3
+defineBit('OV',   'PSW',  2); // bit D2
+defineBit('P',    'PSW',  0); // bit D0
 
 defineBit('SMOD', 'PCON', 7);
 defineBit('GF1',  'PCON', 3);
@@ -176,38 +193,38 @@ defineBit('GF0',  'PCON', 2);
 defineBit('PD',   'PCON', 1);
 defineBit('IDL',  'PCON', 0);
 
-defineBit('EA',   'IE',   7);
-defineBit('ET2',  'IE',   5);
-defineBit('ES',   'IE',   4);
-defineBit('ET1',  'IE',   3);
-defineBit('EX1',  'IE',   2);
-defineBit('ET0',  'IE',   1);
-defineBit('EX0',  'IE',   0);
+defineBit('EA',   'IE',   7); // bit AF
+defineBit('ET2',  'IE',   5); // bit AD
+defineBit('ES',   'IE',   4); // bit AC
+defineBit('ET1',  'IE',   3); // bit AB
+defineBit('EX1',  'IE',   2); // bit AA
+defineBit('ET0',  'IE',   1); // bit A9
+defineBit('EX0',  'IE',   0); // bit A8
 
-defineBit('PT2',  'IP',   5);
-defineBit('PS',   'IP',   4);
-defineBit('PT1',  'IP',   3);
-defineBit('PX1',  'IP',   2);
-defineBit('PT0',  'IP',   1);
-defineBit('PX0',  'IP',   0);
+defineBit('PT2',  'IP',   5); // bit BD
+defineBit('PS',   'IP',   4); // bit BC
+defineBit('PT1',  'IP',   3); // bit BB
+defineBit('PX1',  'IP',   2); // bit BA
+defineBit('PT0',  'IP',   1); // bit B9
+defineBit('PX0',  'IP',   0); // bit B8
 
-defineBit('TF1',  'TCON', 7);
-defineBit('TR1',  'TCON', 6);
-defineBit('TF0',  'TCON', 5);
-defineBit('TR0',  'TCON', 4);
-defineBit('IE1',  'TCON', 3);
-defineBit('IT1',  'TCON', 2);
-defineBit('IE0',  'TCON', 1);
-defineBit('IT0',  'TCON', 0);
+defineBit('TF1',  'TCON', 7); // bit 8F
+defineBit('TR1',  'TCON', 6); // bit 8E
+defineBit('TF0',  'TCON', 5); // bit 8D
+defineBit('TR0',  'TCON', 4); // bit 8C
+defineBit('IE1',  'TCON', 3); // bit 8B
+defineBit('IT1',  'TCON', 2); // bit 8A
+defineBit('IE0',  'TCON', 1); // bit 89
+defineBit('IT0',  'TCON', 0); // bit 88
 
-defineBit('SM0',  'SCON', 7);
-defineBit('SM1',  'SCON', 6);
-defineBit('SM2',  'SCON', 5);
-defineBit('REN',  'SCON', 4);
-defineBit('TB8',  'SCON', 3);
-defineBit('RB8',  'SCON', 2);
-defineBit('TI',   'SCON', 1);
-defineBit('RI',   'SCON', 0);
+defineBit('SM0',  'SCON', 7); // bit 9F
+defineBit('SM1',  'SCON', 6); // bit 9E
+defineBit('SM2',  'SCON', 5); // bit 9D
+defineBit('REN',  'SCON', 4); // bit 9C
+defineBit('TB8',  'SCON', 3); // bit 9B
+defineBit('RB8',  'SCON', 2); // bit 9A
+defineBit('TI',   'SCON', 1); // bit 99
+defineBit('RI',   'SCON', 0); // bit 98
 
 var opcodeArgTypes = {
   'Rn': 0, // R7 - R0 [I don't think this is a legit argument]
@@ -283,14 +300,15 @@ var readOpcodeAndArgs = function () {
   return [op, args];
 };
 
-var printMemoryHead = function () {
+var printMemoryHead = function (mem) {
+  mem = mem || ExternalRAM;
   var str = '';
   str += '\nMemory head:\n';
   str += '\t |\t0\t1\t2\t3\t4\t5\t6\t7\t8\t9\tA\tB\tC\tD\tE\tF\n';
   str += '-----------------------------------';
   str += '-----------------------------------\n'; 
   str += [].slice
-            .apply(DataMemory.subarray(0,0xFF))
+            .apply(mem.subarray(0,0xFF))
             .map(intToByteStr).join('\t').match(/(\w+\t){16}/g)
             .map(function (x, i) { 
               return '0x' + intToHexStr(i) + '_ |\t' + x; 
@@ -300,7 +318,7 @@ var printMemoryHead = function () {
 };
 
 var fillMemoryFromHex = function () {
-  DataMemory.clear();
+  ExternalRAM.clear();
   if (!hexfile.value) {
     return;
   }
@@ -320,7 +338,7 @@ var fillMemoryFromHex = function () {
       log('End record type detected!');
       return;
     }
-    PC = (0x8000 + loadAddress) % 0x10000;
+    PC = (loadAddress) % 0x10000;
     var i;
     for (i = 4; i < 4 + recordLength; i++) {
       setMemLoc(PC, strToHex(bytes[i]));
@@ -437,6 +455,9 @@ var stepInstruction = function () {
   );
   var tmp = {};
   var loadNextPC = true;
+  if (window.debug) {
+    debugger;
+  }
   switch (opcode) {
     case 0x00: // NOP
     default:
@@ -536,9 +557,11 @@ var stepInstruction = function () {
       break;
     case 0x52: // ANL iram, A
       InternalRAM[args[0]] = argsToDirect(args[0]) & A;
+      updateOnSBUFWrite(args[0]);
       break;
     case 0x53: // ANL iram, #data
       InternalRAM[args[0]] = argsToDirect(args[0]) & argsToData(args[1]);
+      updateOnSBUFWrite(args[0]);
       break;
     case 0x54: // ANL A, #data
       A = A & argsToData(args[0]);
@@ -632,6 +655,7 @@ var stepInstruction = function () {
       break;
     case 0x55: // DEC iram
       InternalRAM[args[0]] -= 1;
+      updateOnSBUFWrite(args[0]);
       break;
     case 0x56: // DEC @R0
     case 0x57: // DEC @R1
@@ -659,6 +683,7 @@ var stepInstruction = function () {
       nextPC(opcode);
       loadNextPC = false;
       InternalRAM[args[0]] -= 1;
+      updateOnSBUFWrite(args[0]);
       if (InternalRAM[args[0]]) {
         PC = PC + argsToRel(args[1]);
       }
@@ -683,6 +708,7 @@ var stepInstruction = function () {
       break;
     case 0x05: // INC iram
       InternalRAM[args[0]]++;
+      updateOnSBUFWrite(args[0]);
       break;
     case 0x06: // INC @R0
     case 0x07: // INC @R1
@@ -841,10 +867,12 @@ var stepInstruction = function () {
       break;
     case 0x75: // MOV iram, #data
       InternalRAM[args[0]] = argsToData(args[1]);
+      updateOnSBUFWrite(args[0]);
       break;
     case 0x86: // MOV iram, @R0
     case 0x87: // MOV iram, @R1
       InternalRAM[args[0]] = getAtRn(opcode);
+      updateOnSBUFWrite(args[0]);
       break;
     case 0x88: // MOV iram, R0
     case 0x89: // MOV iram, R1
@@ -855,12 +883,15 @@ var stepInstruction = function () {
     case 0x8E: // MOV iram, R6
     case 0x8F: // MOV iram, R7
       InternalRAM[args[0]] = getRn(opcode);
+      updateOnSBUFWrite(args[0]);
       break;
     case 0xF5: // MOV iram, A
       InternalRAM[args[0]] = A;
+      updateOnSBUFWrite(args[0]);
       break;
     case 0x85: // MOV iram, iram
       InternalRAM[args[1]] = InternalRAM[args[0]];
+      updateOnSBUFWrite(args[1]);
       break;
     case 0x93: // MOVC A, @A + DPTR
       A = getMemLoc(A + DPTR);
@@ -891,9 +922,11 @@ var stepInstruction = function () {
       break;
     case 0x42: // ORL iram, A
       InternalRAM[args[0]] = argsToDirect(args[0]) | A;
+      updateOnSBUFWrite(args[0]);
       break;
     case 0x43: // ORL iram, #data
       InternalRAM[args[0]] = argsToDirect(args[0]) | argsToData(args[1]);
+      updateOnSBUFWrite(args[0]);
       break;
     case 0x44: // ORL A, #data
       A = A | argsToData(args[0]);
@@ -923,6 +956,7 @@ var stepInstruction = function () {
       break;
     case 0xD0: // POP iram
       InternalRAM[args[0]] = InternalRAM[SP];
+      updateOnSBUFWrite(args[0]);
       SP = SP - 1;
       break;
     case 0xC0: // PUSH iram
@@ -936,6 +970,7 @@ var stepInstruction = function () {
       SP = SP - 1;
       PCL = InternalRAM[SP];
       SP = SP - 1;
+      break;
     case 0x23: // RL A
       tmp.A7 = (A >> 7) & 1;
       A = (A << 1) + tmp.A7;
@@ -1028,6 +1063,7 @@ var stepInstruction = function () {
       tmp.XCH = A;
       A = InternalRAM[args[0]];
       InternalRAM[args[0]] = tmp.XCH;
+      updateOnSBUFWrite(args[0]);
       break;
     case 0xD6: // XCHD A, @R0
     case 0xD7: // XCHD A, @R1
@@ -1038,9 +1074,11 @@ var stepInstruction = function () {
       break;
     case 0x42: // XRL iram, A
       InternalRAM[args[0]] = argsToDirect(args[0]) ^ A;
+      updateOnSBUFWrite(args[0]);
       break;
     case 0x43: // XRL iram, #data
       InternalRAM[args[0]] = argsToDirect(args[0]) ^ argsToData(args[1]);
+      updateOnSBUFWrite(args[0]);
       break;
     case 0x44: // XRL A, #data
       A = A ^ argsToData(args[0]);
@@ -1075,7 +1113,7 @@ var stepInstruction = function () {
   updateState();
   if (runState) {
     runState = setTimeout(stepInstruction, 1000 / runSpeed);
-    if (verbose && !(runState % 100)) {
+    if (verbose && !(runState % 200)) {
       console.clear();
     }
   }
@@ -1104,8 +1142,26 @@ var reset = function () {
   P2 = 0xFF;
   P3 = 0xFF;
   updateState();
-}
+};
 
 runstop.onclick = function () {
   runState ? stopFromMemory() : runFromMemory();
-}
+};
+
+terminal.onkeypress = function (e) {
+  if (e.which >= 32) {
+    debugger;
+    terminal.keydown = true;
+    SBUF = e.which;
+    terminal.keydown = false;
+    RI = 1;
+  }
+  return false;
+};
+
+terminal.sndchr = function (n) {
+  if (!TI && n !== 10) {
+    terminal.value += String.fromCharCode(n);
+  }
+  TI = 1;
+};
