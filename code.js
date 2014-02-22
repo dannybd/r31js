@@ -5,6 +5,7 @@ var terminal = document.getElementById('terminal');
 var addhex  = document.getElementById('addhex');
 var runstop = document.getElementById('runstop');
 var monrun  = document.getElementById('monrun');
+var resetButton = document.getElementById('resetButton');
 
 Uint8Array.prototype.clear = function() { this.set(Array(this.length)); }
 
@@ -17,6 +18,7 @@ var Mode = Modes.MON;
 
 monrun.onclick = function () {
   monrun.value = (Mode ? 'MON' : 'RUN') + ' mode: click to change';
+  addhex.value = 'Add Hex File to ' + (Mode ? 'ROM' : 'RAM');
   Mode = 1 - Mode;
   reset();
 };
@@ -1143,6 +1145,9 @@ var reset = function () {
   P3 = 0xFF;
   updateState();
 };
+
+reset();
+resetButton.onclick = reset;
 
 runstop.onclick = function () {
   runState ? stopFromMemory() : runFromMemory();
