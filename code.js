@@ -1,5 +1,7 @@
 /** @jsx React.DOM */
 
+"use strict";
+
 var hexfile = document.getElementById('hexfile');
 var terminal = document.getElementById('terminal');
 var addhex  = document.getElementById('addhex');
@@ -7,7 +9,7 @@ var runstop = document.getElementById('runstop');
 var monrun  = document.getElementById('monrun');
 var resetButton = document.getElementById('resetButton');
 
-Uint8Array.prototype.clear = function() { this.set(Array(this.length)); }
+Uint8Array.prototype.clear = function() { this.set(new Array(this.length)); };
 
 var ExternalROM = new Uint8Array(0x8000); // EPROM
 var ExternalRAM = new Uint8Array(0x8000); // RAM
@@ -16,20 +18,12 @@ var InternalRAM = new Uint8Array(0x100);
 var Modes = { MON: 0, RUN: 1 };
 var Mode = Modes.MON;
 
-monrun.onclick = function () {
-  monrun.value = (Mode ? 'MON' : 'RUN') + ' mode: click to change';
-  addhex.value = 'Add Hex File to ' + (Mode ? 'ROM' : 'RAM');
-  Mode = 1 - Mode;
-  reset();
-};
-
 var getMemLoc = function (addr) {
   var subAddr = addr & 0x7FFF;
   if ((Mode === Modes.MON) ^ (addr > 0x7FFF)) {
     return ExternalROM[subAddr];
-  } else {
-    return ExternalRAM[subAddr];
   }
+  return ExternalRAM[subAddr];
 };
 
 var setMemLoc = function (addr, newVal) {
@@ -39,7 +33,7 @@ var setMemLoc = function (addr, newVal) {
   } else {
     ExternalRAM[subAddr] = newVal;
   }
-}
+};
 
 // See http://www.edsim51.com/8051Notes/8051/memory.html
 
@@ -56,7 +50,7 @@ var log = function() {
 var strToHex = function (n) { return parseInt(n, 16); };
 var intToHexStr = function (n, minBits) { 
   minBits = minBits || 0;
-  var hex = Array(minBits + 1).join('0');
+  var hex = new Array(minBits + 1).join('0');
   hex += n.toString(16).toUpperCase();
   return minBits ? hex.substr(hex.length - minBits) : hex;
   
@@ -87,12 +81,19 @@ var bitProps = function (varName, n) {
         window[varName] &= 0xFF - (1 << n);
       }
     }
-  }
+  };
 };
 
 var defineBit = function (varName, byteName, bit) {
   Object.defineProperty(window, varName, bitProps(byteName, bit));
 };
+
+var R0, R1, R2, R3, R4, R5, R6, R7;
+var P0, SP, DPL, DPH, DPTR, PCON, TCON, TMOD, TL0, TL1, TH0, TH1, P1, SCON;
+var P2, IE, P3, IP, PSW, ACC, A, B, PCL, PCH, PC, SBUF;
+var C, CY, AC, F0, RS1, RS0, OV, P, SMOD, GF1, GF0, PD, IDL, EA, ET2, ES, ET1;
+var EX1, ET0, EX0, PT2, PS, PT1, PX1, PT0, PX0, TF1, TR1, TF0, TR0, IE1, IT1;
+var IE0, IT0, SM0, SM1, SM2, REN, TB8, RB8, TI, RI;
 
 // And now, we begin to define the internal memory structure.
 
@@ -147,10 +148,11 @@ Object.defineProperty(window, 'SBUF', {
     }
   }
 });
+
 var updateOnSBUFWrite = function (addr) {
   if (addr === 0x99) {
     SBUF = SBUF;
-  };
+  }
 };
 
 defineByte('P2', InternalRAM, 0xA0);
@@ -227,19 +229,27 @@ defineBit('TB8',  'SCON', 3); // bit 9B
 defineBit('RB8',  'SCON', 2); // bit 9A
 defineBit('TI',   'SCON', 1); // bit 99
 defineBit('RI',   'SCON', 0); // bit 98
-
-var opcodeArgTypes = {
-  'Rn': 0, // R7 - R0 [I don't think this is a legit argument]
-  'direct': 0,  // 8-bit internal data location's address. This could be Internal Data RAM [0-127] or a SFR [128-255].
-  '@Ri': 0, // 8-bit internal data RAM location (0-255) addressed indirectly through register R1 or R0.
-  '#data': 0,     // 8-bit constant included in instruction
-  '#data 16': 0,  // 16-bit constant included in instruction
-  'addr 16': 0,   // 16-bit destination address. Used by LCALL & LJMP. A branch can be anywhere within the 64K-byte Program Memory Address Space.
-  'addr 11': 0,   // 11-bit destination address. Used by ACALL & AJMP. The branch will be within the same 2K-byte page of program memory as the first byte of the following instruction.
-  'rel': 0,       // Signed (two's complement) 8-bit offset byte. Used by SJMP and all conditional jumps. Range is -128 to +127 bytes relative to the first byte of the following instruction.
-  'bit': 0,       // Direct Addressed bit in Internal Data RAM or SFR.
-};
-
+/**
+ * var opcodeArgTypes = {
+ *   'Rn': 0, // R7 - R0 [I don't think this is a legit argument]
+ *   'direct': 0,  // 8-bit internal data location's address. 
+ * This could be Internal Data RAM [0-127] or a SFR [128-255].
+ *   '@Ri': 0, // 8-bit internal data RAM location (0-255) addressed indirectly 
+ * through register R1 or R0.
+ *   '#data': 0,     // 8-bit constant included in instruction
+ *   '#data 16': 0,  // 16-bit constant included in instruction
+ *   'addr 16': 0,   // 16-bit destination address. Used by LCALL & LJMP. 
+ * A branch can be anywhere within the 64K-byte Program Memory Address Space.
+ *   'addr 11': 0,   // 11-bit destination address. Used by ACALL & AJMP. The 
+ * branch will be within the same 2K-byte page of program memory as the first 
+ * byte of the following instruction.
+ *   'rel': 0,       // Signed (two's complement) 8-bit offset byte. Used by 
+ * SJMP and all conditional jumps. Range is -128 to +127 bytes relative to the 
+ * first byte of the following instruction.
+ *   'bit': 0,       // Direct Addressed bit in Internal Data RAM or SFR.
+ * };
+ */
+ 
 /*****
  * TODO:
  * - Understand memory layout.
@@ -252,20 +262,20 @@ var opcodeArgTypes = {
  * http://www.edsim51.com/8051Notes/8051/memory.html
  */
 
-var LightBank = React.createClass({
-  render: function () {
-    var byte = this.props.byte;
-    var lightBulbs = [7, 6, 5, 4, 3, 2, 1, 0].map(function (i) {
-      var bit = byte[i];
-      return (<span className={bit ? "on" : "off"}>{bit}</span>);
-    });
-    return (
-      <div className="lightBank">
-        {lightBulbs}
-      </div>
-    );
-  }
-});
+// var LightBank = React.createClass({
+  // render: function () {
+    // var byte = this.props.byte;
+    // var lightBulbs = [7, 6, 5, 4, 3, 2, 1, 0].map(function (i) {
+      // var bit = byte[i];
+      // return (<span className={bit ? "on" : "off"}>{bit}</span>);
+    // });
+    // return (
+      // <div className="lightBank">
+        // {lightBulbs}
+      // </div>
+    // );
+  // }
+// });
 
 // React.renderComponent(
   // <LightBank byte={P0_} />, 
@@ -289,7 +299,7 @@ var opcodeByteCounts = [
     2, 2, 2, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0xC_
     2, 2, 2, 1, 1, 3, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, // 0xD_
     1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0xE_
-    1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0xF_
+    1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1  // 0xF_
 ];
 
 var readOpcodeAndArgs = function () {
@@ -327,7 +337,7 @@ var fillMemoryFromHex = function () {
   var hexLines = hexfile.value.substr(1).split('\n:');
   hexLines.forEach(function (line, lineNum) {
     log('Running on line ' + lineNum);
-    var bytes = line.match(/../g);
+    var bytes = line.match(/\w\w/g);
     if (bytes.map(strToHex).reduce(function(a, b) { return a + b; }) % 256) {
       // Failed the checksum
       log('Checksum failed on line ' + lineNum + '!');
@@ -352,18 +362,6 @@ var fillMemoryFromHex = function () {
 };
 
 addhex.onclick = fillMemoryFromHex;
-
-var runFromMemory = function () {
-  runState = true;
-  runstop.value = 'Stop from Memory';
-  stepInstruction();
-};
-
-var stopFromMemory = function () {
-  clearTimeout(runState);
-  runState = false;
-  runstop.value = 'Run from Memory';
-};
 
 var nextPC = function (opcode) {
   PC = PC + opcodeByteCounts[opcode];
@@ -395,9 +393,8 @@ var updateParityBit = function () {
 var getBitAddr = function (bitAddr) {
   if (bitAddr < 0x80) {
     return [0x20 + (bitAddr >> 3), bitAddr % 8];
-  } else {
-    return [(bitAddr >> 3) << 3, bitAddr % 8];
   }
+  return [(bitAddr >> 3) << 3, bitAddr % 8];
 };
 
 var getBit = function (bitAddr) {
@@ -425,11 +422,26 @@ Object.defineProperty(window, 'AtR1', {
   set: function (val) { InternalRAM[R1] = val; }
 });
 
+var updateState = function () {
+  var P1Bulbs = [].slice.apply(
+    document.querySelectorAll('.lightBank.P1 .lightBulb')
+  ).reverse();
+  var bits = byteToBits(P1);
+  P1Bulbs.forEach(function (bulb, i) {
+    var val = bits[i];
+    if (bulb.innerText !== val.toString()) {
+      bulb.classList.remove(val ? 'off' : 'on');
+      bulb.innerText = val;
+      bulb.classList.add(val ? 'on' : 'off');
+    }
+  });
+};
+
 var argsToDirect = function (arg) { return InternalRAM[arg]; };
 var argsToData = function (arg) { return arg; };
 var argsToData16 = function (arg, arg2) { return (arg << 8) + arg2; };
 var argsToAddr16 = function (arg, arg2) { return (arg << 8) + arg2; };
-var argsToAddr11 = function (arg) { return (arg << 8) + arg2; };
+// var argsToAddr11 = function (arg, arg2) { return (arg << 8) + arg2; }; //TODO
 var argsToRel = function (arg) { return ((arg + 128) % 256) - 128; };
 var argsToBit = getBit;
 var getRnName = function (opcode) { return 'R' + (opcode % 8); };
@@ -461,9 +473,6 @@ var stepInstruction = function () {
     debugger;
   }
   switch (opcode) {
-    case 0x00: // NOP
-    default:
-      break;
     case 0x11: // ACALL page0
     case 0x31: // ACALL page1
     case 0x51: // ACALL page2
@@ -607,8 +616,8 @@ var stepInstruction = function () {
       }
       C = A < argsToDirect(args[0]);
       break;
-    case 0xB5: // CJNE @R0, iram, rel
-    case 0xB6: // CJNE @R1, iram, rel
+    case 0xB6: // CJNE @R0, iram, rel
+    case 0xB7: // CJNE @R1, iram, rel
       nextPC(opcode);
       loadNextPC = false;
       if (getAtRn(opcode) !== argsToData(args[0])) {
@@ -652,25 +661,25 @@ var stepInstruction = function () {
     case 0xD4: // DA A
       // TODO: DA
       break;
-    case 0x54: // DEC A
+    case 0x14: // DEC A
       A = A - 1;
       break;
-    case 0x55: // DEC iram
+    case 0x15: // DEC iram
       InternalRAM[args[0]] -= 1;
       updateOnSBUFWrite(args[0]);
       break;
-    case 0x56: // DEC @R0
-    case 0x57: // DEC @R1
+    case 0x16: // DEC @R0
+    case 0x17: // DEC @R1
       window[getAtRnName(opcode)] -= 1;
       break;
-    case 0x58: // DEC R0
-    case 0x59: // DEC R1
-    case 0x5A: // DEC R2
-    case 0x5B: // DEC R3
-    case 0x5C: // DEC R4
-    case 0x5D: // DEC R5
-    case 0x5E: // DEC R6
-    case 0x5F: // DEC R7
+    case 0x18: // DEC R0
+    case 0x19: // DEC R1
+    case 0x1A: // DEC R2
+    case 0x1B: // DEC R3
+    case 0x1C: // DEC R4
+    case 0x1D: // DEC R5
+    case 0x1E: // DEC R6
+    case 0x1F: // DEC R7
       window[getRnName(opcode)] -= 1;
       break;
     case 0x84: // DIV AB
@@ -922,6 +931,8 @@ var stepInstruction = function () {
       A = tmp.product % 256;
       B = tmp.product >> 8;
       break;
+    case 0x00: // NOP
+      break;
     case 0x42: // ORL iram, A
       InternalRAM[args[0]] = argsToDirect(args[0]) | A;
       updateOnSBUFWrite(args[0]);
@@ -1074,39 +1085,35 @@ var stepInstruction = function () {
       A = A - tmp.AL + tmp.AtRnL;
       window[getAtRnName(opcode)] += tmp.AL - tmp.AtRnL;
       break;
-    case 0x42: // XRL iram, A
+    case 0x62: // XRL iram, A
       InternalRAM[args[0]] = argsToDirect(args[0]) ^ A;
       updateOnSBUFWrite(args[0]);
       break;
-    case 0x43: // XRL iram, #data
+    case 0x63: // XRL iram, #data
       InternalRAM[args[0]] = argsToDirect(args[0]) ^ argsToData(args[1]);
       updateOnSBUFWrite(args[0]);
       break;
-    case 0x44: // XRL A, #data
+    case 0x64: // XRL A, #data
       A = A ^ argsToData(args[0]);
       break;
-    case 0x45: // XRL A, iram
+    case 0x65: // XRL A, iram
       A = A ^ argsToDirect(args[0]);
       break;
-    case 0x46: // XRL A, @R0
-    case 0x47: // XRL A, @R1
+    case 0x66: // XRL A, @R0
+    case 0x67: // XRL A, @R1
       A = A ^ getAtRn(opcode);
       break;
-    case 0x48: // XRL A, R0
-    case 0x49: // XRL A, R1
-    case 0x4A: // XRL A, R2
-    case 0x4B: // XRL A, R3
-    case 0x4C: // XRL A, R4
-    case 0x4D: // XRL A, R5
-    case 0x4E: // XRL A, R6
-    case 0x4F: // XRL A, R7
+    case 0x68: // XRL A, R0
+    case 0x69: // XRL A, R1
+    case 0x6A: // XRL A, R2
+    case 0x6B: // XRL A, R3
+    case 0x6C: // XRL A, R4
+    case 0x6D: // XRL A, R5
+    case 0x6E: // XRL A, R6
+    case 0x6F: // XRL A, R7
       A = A ^ getRn(opcode);
       break;
-    case 0x72: // XRL C, bit
-      C = C ^ argsToBit(args[0]);
-      break;
-    case 0xA0: // XRL C, !bit
-      C = C ^ !argsToBit(args[0]);
+    default:
       break;
   }
   if (loadNextPC) {
@@ -1115,28 +1122,26 @@ var stepInstruction = function () {
   updateState();
   if (runState) {
     runState = setTimeout(stepInstruction, 1000 / runSpeed);
-    if (verbose && !(runState % 200)) {
+    if (verbose && (runState % 200 === 0)) {
       console.clear();
     }
   }
 };
 
-var updateState = function () {
-  var P1Bulbs = [].slice.apply(
-    document.querySelectorAll('.lightBank.P1 .lightBulb')
-  ).reverse();
-  var bits = byteToBits(P1);
-  P1Bulbs.forEach(function (bulb, i) {
-    var val = bits[i];
-    if (bulb.innerText !== val.toString()) {
-      bulb.classList.remove(val ? 'off' : 'on');
-      bulb.innerText = val;
-      bulb.classList.add(val ? 'on' : 'off');
-    }
-  });
+var runFromMemory = function () {
+  runState = true;
+  runstop.value = 'Stop from Memory';
+  stepInstruction();
+};
+
+var stopFromMemory = function () {
+  clearTimeout(runState);
+  runState = false;
+  runstop.value = 'Run from Memory';
 };
 
 var reset = function () {
+  InternalRAM.clear();
   PC = 0x00;
   SP = 0x07;
   P0 = 0xFF;
@@ -1150,7 +1155,11 @@ reset();
 resetButton.onclick = reset;
 
 runstop.onclick = function () {
-  runState ? stopFromMemory() : runFromMemory();
+  if (runState) {
+    stopFromMemory();
+  } else {
+    runFromMemory();
+  }
 };
 
 terminal.onkeypress = function (e) {
@@ -1169,4 +1178,11 @@ terminal.sndchr = function (n) {
     terminal.value += String.fromCharCode(n);
   }
   TI = 1;
+};
+
+monrun.onclick = function () {
+  monrun.value = (Mode ? 'MON' : 'RUN') + ' mode: click to change';
+  addhex.value = 'Add Hex File to ' + (Mode ? 'ROM' : 'RAM');
+  Mode = 1 - Mode;
+  reset();
 };
