@@ -1,7 +1,5 @@
 /** @jsx React.DOM */
 
-"use strict";
-
 var hexfile = document.getElementById('hexfile');
 var terminal = document.getElementById('terminal');
 var addhex  = document.getElementById('addhex');
@@ -87,13 +85,6 @@ var bitProps = function (varName, n) {
 var defineBit = function (varName, byteName, bit) {
   Object.defineProperty(window, varName, bitProps(byteName, bit));
 };
-
-var R0, R1, R2, R3, R4, R5, R6, R7;
-var P0, SP, DPL, DPH, DPTR, PCON, TCON, TMOD, TL0, TL1, TH0, TH1, P1, SCON;
-var P2, IE, P3, IP, PSW, ACC, A, B, PCL, PCH, PC, SBUF;
-var C, CY, AC, F0, RS1, RS0, OV, P, SMOD, GF1, GF0, PD, IDL, EA, ET2, ES, ET1;
-var EX1, ET0, EX0, PT2, PS, PT1, PX1, PT0, PX0, TF1, TR1, TF0, TR0, IE1, IT1;
-var IE0, IT0, SM0, SM1, SM2, REN, TB8, RB8, TI, RI;
 
 // And now, we begin to define the internal memory structure.
 
@@ -431,7 +422,7 @@ var updateState = function () {
     var val = bits[i];
     if (bulb.innerText !== val.toString()) {
       bulb.classList.remove(val ? 'off' : 'on');
-      bulb.innerText = val;
+      bulb.innerHTML = val;
       bulb.classList.add(val ? 'on' : 'off');
     }
   });
@@ -1164,7 +1155,7 @@ runstop.onclick = function () {
 
 terminal.onkeypress = function (e) {
   if (e.which >= 32) {
-    debugger;
+    // debugger;
     terminal.keydown = true;
     SBUF = e.which;
     terminal.keydown = false;
