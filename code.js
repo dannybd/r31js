@@ -6,6 +6,7 @@ var addhex  = document.getElementById('addhex');
 var runstop = document.getElementById('runstop');
 var monrun  = document.getElementById('monrun');
 var resetButton = document.getElementById('resetButton');
+var files   = document.getElementById('files');
 
 Uint8Array.prototype.clear = function() { this.set(new Array(this.length)); };
 
@@ -46,17 +47,17 @@ var log = function() {
 };
 
 var strToHex = function (n) { return parseInt(n, 16); };
-var intToHexStr = function (n, minBits) { 
+var intToHexStr = function (n, minBits) {
   minBits = minBits || 0;
   var hex = new Array(minBits + 1).join('0');
   hex += n.toString(16).toUpperCase();
   return minBits ? hex.substr(hex.length - minBits) : hex;
-  
+
 };
 var intToByteStr = function (n) {
   return intToHexStr(n, 2);
 };
-var byteToBits = function (n) { 
+var byteToBits = function (n) {
   return [0,1,2,3,4,5,6,7].map(function (i) { return (n >> i) & 1; });
 };
 
@@ -110,7 +111,7 @@ defineByte('DPH', InternalRAM, 0x83);
 // DPTR is just 0x[DPH][DPL].
 Object.defineProperty(window, 'DPTR', {
   get: function () { return (DPH << 8) + DPL; },
-  set: function (val) { 
+  set: function (val) {
     DPH = val >> 8;
     DPL = val % 0x100;
   }
@@ -129,13 +130,13 @@ defineByte('P1', InternalRAM, 0x90);
 defineByte('SCON', InternalRAM, 0x98);
 Object.defineProperty(window, 'SBUF', {
   get: function () { return InternalRAM[0x99]; },
-  set: function (val) { 
+  set: function (val) {
     if (window.debug) {
       debugger;
     }
-    InternalRAM[0x99] = val; 
+    InternalRAM[0x99] = val;
     if (!terminal.keydown) {
-      terminal.sndchr(val); 
+      terminal.sndchr(val);
     }
   }
 });
@@ -161,12 +162,12 @@ defineByte('A', InternalRAM, 0xE0);
 
 defineByte('B', InternalRAM, 0xF0);
 
-// These aren't technically defined within the 
+// These aren't technically defined within the
 defineByte('PCL', InternalRAM, 0xFE);
 defineByte('PCH', InternalRAM, 0xFF);
 Object.defineProperty(window, 'PC', {
   get: function () { return (PCH << 8) + PCL; },
-  set: function (val) { 
+  set: function (val) {
     PCH = val >> 8;
     PCL = val % 0x100;
   }
@@ -223,24 +224,24 @@ defineBit('RI',   'SCON', 0); // bit 98
 /**
  * var opcodeArgTypes = {
  *   'Rn': 0, // R7 - R0 [I don't think this is a legit argument]
- *   'direct': 0,  // 8-bit internal data location's address. 
+ *   'direct': 0,  // 8-bit internal data location's address.
  * This could be Internal Data RAM [0-127] or a SFR [128-255].
- *   '@Ri': 0, // 8-bit internal data RAM location (0-255) addressed indirectly 
+ *   '@Ri': 0, // 8-bit internal data RAM location (0-255) addressed indirectly
  * through register R1 or R0.
  *   '#data': 0,     // 8-bit constant included in instruction
  *   '#data 16': 0,  // 16-bit constant included in instruction
- *   'addr 16': 0,   // 16-bit destination address. Used by LCALL & LJMP. 
+ *   'addr 16': 0,   // 16-bit destination address. Used by LCALL & LJMP.
  * A branch can be anywhere within the 64K-byte Program Memory Address Space.
- *   'addr 11': 0,   // 11-bit destination address. Used by ACALL & AJMP. The 
- * branch will be within the same 2K-byte page of program memory as the first 
+ *   'addr 11': 0,   // 11-bit destination address. Used by ACALL & AJMP. The
+ * branch will be within the same 2K-byte page of program memory as the first
  * byte of the following instruction.
- *   'rel': 0,       // Signed (two's complement) 8-bit offset byte. Used by 
- * SJMP and all conditional jumps. Range is -128 to +127 bytes relative to the 
+ *   'rel': 0,       // Signed (two's complement) 8-bit offset byte. Used by
+ * SJMP and all conditional jumps. Range is -128 to +127 bytes relative to the
  * first byte of the following instruction.
  *   'bit': 0,       // Direct Addressed bit in Internal Data RAM or SFR.
  * };
  */
- 
+
 /*****
  * TODO:
  * - Understand memory layout.
@@ -269,7 +270,7 @@ defineBit('RI',   'SCON', 0); // bit 98
 // });
 
 // React.renderComponent(
-  // <LightBank byte={P0_} />, 
+  // <LightBank byte={P0_} />,
   // document.getElementById('lightBank')
 // );
 
@@ -309,23 +310,26 @@ var printMemoryHead = function (mem) {
   str += '\nMemory head:\n';
   str += '\t |\t0\t1\t2\t3\t4\t5\t6\t7\t8\t9\tA\tB\tC\tD\tE\tF\n';
   str += '-----------------------------------';
-  str += '-----------------------------------\n'; 
+  str += '-----------------------------------\n';
   str += [].slice
             .apply(mem.subarray(0,0xFF))
             .map(intToByteStr).join('\t').match(/(\w+\t){16}/g)
-            .map(function (x, i) { 
-              return '0x' + intToHexStr(i) + '_ |\t' + x; 
+            .map(function (x, i) {
+              return '0x' + intToHexStr(i) + '_ |\t' + x;
             }).join('\n');
   str += '\n';
   log(str);
 };
 
-var fillMemoryFromHex = function () {
-  ExternalRAM.clear();
-  if (!hexfile.value) {
+var fillMemoryFromTextfield = function () {
+  fillMemoryFromHex(hexfile.value);
+};
+
+var fillMemoryFromHex = function (hex, mem) {
+  if (!hex) {
     return;
   }
-  var hexLines = hexfile.value.substr(1).split('\n:');
+  var hexLines = hex.substr(1).split('\n:');
   hexLines.forEach(function (line, lineNum) {
     log('Running on line ' + lineNum);
     var bytes = line.match(/\w\w/g);
@@ -352,7 +356,54 @@ var fillMemoryFromHex = function () {
   PC = 0;
 };
 
-addhex.onclick = fillMemoryFromHex;
+addhex.onclick = fillMemoryFromTextfield;
+
+var MINMON = (
+  ':03000000020100FA\n' +
+  ':03000300020100F7\n' +
+  ':03000B00020100EF\n' +
+  ':03001300020100E7\n' +
+  ':03001B00020100DF\n' +
+  ':03002300020100D7\n' +
+  ':03002B00020100CF\n' +
+  ':10010000C2AF1201521202BE0A0D57656C636F6DC9\n' +
+  ':100110006520746F20362E313135210A0D4D494E40\n' +
+  ':100120004D4F4E3E200075812FC2AFC2001202BE5D\n' +
+  ':0D0130000D0A2A00C298120281FA02029DF7\n' +
+  ':1001500080D4758920758841758DFD75985022026F\n' +
+  ':100160002902290229022901AB022902290195024B\n' +
+  ':100170002902290229022902290229022902290227\n' +
+  ':1001800029022901FD02290229022902290211025C\n' +
+  ':100190002902290229120257FF1202DD120257C05A\n' +
+  ':1001A000E01202DD1202D2EFC0E0221202D2743E4F\n' +
+  ':1001B0001202AC1202B4B43AFA1201F36021F8123E\n' +
+  ':1001C00001F3D2E7F5831201F3F5821201F3120174\n' +
+  ':1001D000F3F0A3D8F91201F3742E1202AC80D412FA\n' +
+  ':1001E00001F31201F31201F31201F3742E1202ACA7\n' +
+  ':1001F0000201501202572000012202023F1202693E\n' +
+  ':10020000F583120269F5821202D2E01202DD0201C8\n' +
+  ':1002100050120269F583120269F582E01202B412EB\n' +
+  ':1002200002AC120269F00201501202BE0D0A2062F5\n' +
+  ':10023000616420636F6D6D616E6420000201501275\n' +
+  ':1002400002BE0D0A2062616420706172616D657486\n' +
+  ':10025000657220000201501202B4120304C4F5F0CA\n' +
+  ':100260001202B412030445F0221202B41202AC12BC\n' +
+  ':100270000304C4F5F01202B41202AC12030445F0F8\n' +
+  ':10028000221202B4C2E51202ACC39440500312021F\n' +
+  ':100290003FC0E0941B400312023FD0E02290015F78\n' +
+  ':1002A000EA230493C0E0EA2393C0E022C299F599BF\n' +
+  ':1002B0003099FD223098FDE599547FC29822D08371\n' +
+  ':1002C000D082E493B4000280061202ACA380F374DF\n' +
+  ':1002D0000173740A1202AC740D1202AC22C0E01257\n' +
+  ':1002E00002EC1202ACEA1202ACD0E022FA540F2463\n' +
+  ':1002F000F650022407243ACAC4540F24F6500224AC\n' +
+  ':1003000007243A22C20024D05017C324F640032405\n' +
+  ':100310000A22C2E5C324F95008C324FA4003540F4B\n' +
+  ':0903200022D2000201500200008B\n' +
+  ':00000001FF\n'
+);
+
+fillMemoryFromHex(MINMON);
 
 var nextPC = function (opcode) {
   PC = PC + opcodeByteCounts[opcode];
@@ -360,21 +411,21 @@ var nextPC = function (opcode) {
 
 // This is faster.
 var parityCounts = [
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+  0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+  1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
   0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0
 ];
 var updateParityBit = function () {
@@ -455,7 +506,7 @@ var stepInstruction = function () {
   var opcode = nextOpAndArgs[0];
   var args   = nextOpAndArgs[1];
   log(
-    'PC is at byte 0x' + intToHexStr(PC, 4) + ': opcode ' + 
+    'PC is at byte 0x' + intToHexStr(PC, 4) + ': opcode ' +
     intToByteStr(opcode) + ' [' + args.map(intToByteStr).join(', ') + ']'
   );
   var tmp = {};
@@ -1161,15 +1212,19 @@ terminal.onkeypress = function (e) {
     terminal.keydown = false;
     RI = 1;
   }
+  e.preventDefault();
   return false;
 };
 
 terminal.sndchr = function (n) {
   if (!TI && n !== 10) {
     terminal.value += String.fromCharCode(n);
+    terminal.scrollTop = terminal.scrollHeight;
   }
   TI = 1;
 };
+
+terminal.scrollTop = terminal.scrollHeight;
 
 monrun.onclick = function () {
   monrun.value = (Mode ? 'MON' : 'RUN') + ' mode: click to change';
@@ -1177,3 +1232,9 @@ monrun.onclick = function () {
   Mode = 1 - Mode;
   reset();
 };
+
+var fileUploads = false;
+if (window.File && window.FileReader && window.FileList && window.Blob) {
+  fileUploads = true;
+
+}

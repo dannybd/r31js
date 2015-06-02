@@ -94,23 +94,25 @@ if (isset($_GET['minmon'])) {
 } else {
   echo $PHASER;
 }
-?></textarea><textarea id="terminal" rows="20" cols="44"></textarea><br>
+?></textarea>
+<textarea id="terminal" rows="20" cols="44" placeholder="This is the terminal. MINMON comes pre-loaded; press Run from Memory below."></textarea><br>
 <input type="button" id="addhex" value="Add Hex File to ROM" />
 <input type="button" id="runstop" value="Run from Memory" />
 <input type="button" id="monrun" value="MON mode: click to change" />
 <input type="button" id="resetButton" value="Reset" />
+<input type="file" id="files" value="FILETIME" />
 <div class="lightBank P1">
 <span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span><span class="lightBulb off">0</span>
 </div>
 <br>
 <p>
 <h3>Code bits:</h3>
-<h4>MINMON:</h4>
-<pre><?= $MINMON; ?></pre>
 <h4>Calculator:</h4>
 <pre><?= $CALCULATOR; ?></pre>
 <h4>Phaser:</h4>
 <pre><?= $PHASER; ?></pre>
+<h4>MINMON:</h4>
+<pre><?= $MINMON; ?></pre>
 </p>
 <script src="http://fb.me/react-0.8.0.min.js"></script>
 <script src="http://fb.me/JSXTransformer-0.8.0.js"></script>

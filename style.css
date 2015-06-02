@@ -7,3 +7,6 @@
 .lightBulb.off {
   background-color: #444444;
 }
+#files {
+  display: none;
+}
